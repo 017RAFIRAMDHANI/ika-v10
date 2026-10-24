@@ -9,6 +9,8 @@
 --   K2  Tabel admin_audit_log mencatat seluruh tindakan administrator.
 --       ballots dan admin_audit_log bersifat append-only (UPDATE/DELETE/TRUNCATE ditolak).
 --   K3  Hanya akun role Alumni yang dapat memilih (ditegakkan di aplikasi dan di castVote).
+--   K5  Verifikasi wajah dikunci sementara setelah beberapa kali gagal (users.face_*).
+--   K6  security_events (wajah dikunci / wajah ganda) dan dpt_resmi (daftar alumni resmi).
 -- ================================================================
 
 BEGIN;
@@ -46,6 +48,9 @@ CREATE TABLE IF NOT EXISTS users (
   domicile VARCHAR(160),
   face_verified_at TIMESTAMPTZ,
   registration_source VARCHAR(32) NOT NULL DEFAULT 'Admin',
+  face_failed_attempts INTEGER NOT NULL DEFAULT 0
+    CONSTRAINT chk_users_face_failed_attempts CHECK (face_failed_attempts >= 0),
+  face_locked_until TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -97,6 +102,23 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- K5/K6: peringatan keamanan (verifikasi wajah dikunci, wajah ganda saat mendaftar).
+CREATE TABLE IF NOT EXISTS security_events (
+  id BIGSERIAL PRIMARY KEY,
+  event VARCHAR(64) NOT NULL,
+  user_id BIGINT,
+  user_label VARCHAR(600),
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- K6a: daftar alumni resmi untuk mencocokkan pendaftaran mandiri (kosong = belum dicocokkan).
+CREATE TABLE IF NOT EXISTS dpt_resmi (
+  nim VARCHAR(64) PRIMARY KEY,
+  nama VARCHAR(255) NOT NULL,
+  imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_candidates_name ON candidates(name);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email_ci
   ON users (LOWER(email)) WHERE email IS NOT NULL;
@@ -106,6 +128,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_face_templates_active_role
   ON user_face_templates(user_id, template_role) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_ballots_candidate_id ON ballots(candidate_id);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at ON admin_audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_security_events_created_at ON security_events(created_at DESC);
 
 -- Append-only: surat suara dan log audit tidak dapat diubah, dihapus, atau dikosongkan.
 CREATE OR REPLACE FUNCTION ika_tolak_perubahan() RETURNS trigger
@@ -133,11 +156,20 @@ CREATE TRIGGER trg_admin_audit_log_no_truncate
   BEFORE TRUNCATE ON admin_audit_log
   FOR EACH STATEMENT EXECUTE FUNCTION ika_tolak_perubahan();
 
+DROP TRIGGER IF EXISTS trg_security_events_append_only ON security_events;
+CREATE TRIGGER trg_security_events_append_only
+  BEFORE UPDATE OR DELETE ON security_events
+  FOR EACH ROW EXECUTE FUNCTION ika_tolak_perubahan();
+DROP TRIGGER IF EXISTS trg_security_events_no_truncate ON security_events;
+CREATE TRIGGER trg_security_events_no_truncate
+  BEFORE TRUNCATE ON security_events
+  FOR EACH STATEMENT EXECUTE FUNCTION ika_tolak_perubahan();
+
 COMMIT;
 
--- Verifikasi: harus menampilkan 5 tabel.
+-- Verifikasi: harus menampilkan 7 tabel.
 SELECT table_name
 FROM information_schema.tables
 WHERE table_schema = 'public'
-  AND table_name IN ('candidates', 'users', 'user_face_templates', 'ballots', 'admin_audit_log')
+  AND table_name IN ('candidates', 'users', 'user_face_templates', 'ballots', 'admin_audit_log', 'security_events', 'dpt_resmi')
 ORDER BY table_name;

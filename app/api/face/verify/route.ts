@@ -1,7 +1,10 @@
 import { z } from "zod";
-import { getFaceVerificationRecord, markFaceVerified } from "@/lib/db";
+import { getFaceLock, getFaceVerificationRecord, markFaceVerified, recordFaceFailure } from "@/lib/db";
 import {
   decryptFaceDescriptor,
+  FACE_LOCK_MINUTES,
+  FACE_MAX_FAILED_ATTEMPTS,
+  faceLockMessage,
   faceMatchThreshold,
   faceSimilarity,
   normalizeFaceDescriptor,
@@ -43,6 +46,8 @@ export async function POST(request: Request) {
     if (!session) return jsonError("Silakan login terlebih dahulu.", 401);
     if (session.role !== "Alumni") return jsonError("Verifikasi wajah hanya untuk akun pemilih.", 403);
     if (session.faceVerified) return Response.json({ ok: true, redirectTo: "/pemilihan" });
+    const lockedUntil = await getFaceLock(session.id);
+    if (lockedUntil) return jsonError(faceLockMessage(lockedUntil), 429);
 
     const parsed = schema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return jsonError("Data pemindaian wajah tidak valid.");
@@ -86,7 +91,13 @@ export async function POST(request: Request) {
     const referenceDescriptor = decryptFaceDescriptor(record.templateEncrypted);
     const similarity = faceSimilarity(referenceDescriptor, currentDescriptor, scan.modelVersion);
     if (similarity < faceMatchThreshold(scan.modelVersion)) {
-      return jsonError(`Wajah tidak cocok dengan data pendaftar (Skor: ${similarity}). Pastikan pencahayaan dan wajah sudah benar.`, 401);
+      // Skor tidak dikirim ke klien agar tidak dapat dipakai sebagai petunjuk menebak template (K5a).
+      const failure = await recordFaceFailure(session.id, FACE_MAX_FAILED_ATTEMPTS, FACE_LOCK_MINUTES);
+      if (failure.locked) {
+        return jsonError(`Wajah tidak cocok. Verifikasi wajah dikunci ${FACE_LOCK_MINUTES} menit karena terlalu banyak percobaan gagal. Hubungi panitia bila Anda pemilik akun ini.`, 429);
+      }
+      const remaining = FACE_MAX_FAILED_ATTEMPTS - failure.failedAttempts;
+      return jsonError(`Wajah tidak cocok dengan data pendaftar. Pastikan cahaya dari depan dan wajah terlihat jelas. Sisa percobaan: ${remaining}.`, 401);
     }
 
     const saved = await markFaceVerified(session.id, scan.templateRole);

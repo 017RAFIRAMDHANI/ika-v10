@@ -5,6 +5,7 @@ import type {
   AdminUserRecord,
   AuditLogEntry,
   Candidate,
+  SecurityEventEntry,
   ExportVoterRecord,
   UserRole,
   VoteIntegrity,
@@ -615,7 +616,7 @@ export async function markFaceVerified(userId: number, templateRole: FaceTemplat
       RETURNING user_id
     )
     UPDATE users
-    SET face_verified_at = NOW(), updated_at = NOW()
+    SET face_verified_at = NOW(), face_failed_attempts = 0, face_locked_until = NULL, updated_at = NOW()
     WHERE id = ${userId}
       AND EXISTS (SELECT 1 FROM verified_template)
     RETURNING id
@@ -633,7 +634,7 @@ export async function resetUserFaceTemplates(userId: number, actor: AuditActor) 
       RETURNING user_id
     ), reset_user AS (
       UPDATE users
-      SET face_verified_at = NULL, updated_at = NOW()
+      SET face_verified_at = NULL, face_failed_attempts = 0, face_locked_until = NULL, updated_at = NOW()
       WHERE id = ${userId}
         AND EXISTS (SELECT 1 FROM reset_templates)
       RETURNING id, user_id, display_name
@@ -936,4 +937,117 @@ export async function getVoteIntegrity(): Promise<VoteIntegrity> {
     votedUsers: total.votedUsers,
     consistent: total.ballots === total.votedUsers && rows.every((row) => row.votes === row.ballots)
   };
+}
+
+// ---------- K5b: kunci sementara verifikasi wajah setelah beberapa kali gagal
+
+export async function getFaceLock(userId: number) {
+  const sql = getSql();
+  const rows = await sql`
+    SELECT face_locked_until::text AS "lockedUntil"
+    FROM users
+    WHERE id = ${userId} AND face_locked_until > NOW()
+  `;
+  return (rows[0]?.lockedUntil as string | undefined) ?? null;
+}
+
+// Menambah penghitung gagal secara atomik; pada batas maksimum akun dikunci dan dicatat.
+export async function recordFaceFailure(userId: number, maxAttempts: number, lockMinutes: number) {
+  const sql = getSql();
+  const rows = await sql`
+    WITH updated AS (
+      UPDATE users
+      SET
+        face_failed_attempts = CASE WHEN face_failed_attempts + 1 >= ${maxAttempts}::int THEN 0 ELSE face_failed_attempts + 1 END,
+        face_locked_until = CASE
+          WHEN face_failed_attempts + 1 >= ${maxAttempts}::int THEN NOW() + make_interval(mins => ${lockMinutes}::int)
+          ELSE face_locked_until
+        END
+      WHERE id = ${userId}
+      RETURNING id, user_id, display_name, face_failed_attempts, face_locked_until
+    ), logged AS (
+      INSERT INTO security_events (event, user_id, user_label, details)
+      SELECT 'wajah.dikunci', id, user_id || ' - ' || display_name,
+        jsonb_build_object('percobaanGagal', ${maxAttempts}::int, 'menit', ${lockMinutes}::int)
+      FROM updated
+      WHERE face_locked_until > NOW()
+      RETURNING id
+    )
+    SELECT face_failed_attempts AS "failedAttempts", face_locked_until > NOW() AS locked
+    FROM updated
+  `;
+  return (rows[0] ?? { failedAttempts: 0, locked: false }) as { failedAttempts: number; locked: boolean };
+}
+
+// ---------- K6b: cek wajah ganda
+
+export async function getArcFaceTemplatesForDuplicateCheck(modelVersion: string, excludeUserId: number | null) {
+  const sql = getSql();
+  const rows = await sql`
+    SELECT ft.user_id::int AS "userId", u.user_id || ' - ' || u.display_name AS "userLabel", ft.template_encrypted AS "templateEncrypted"
+    FROM user_face_templates ft
+    JOIN users u ON u.id = ft.user_id
+    WHERE ft.revoked_at IS NULL
+      AND ft.model_version = ${modelVersion}
+      AND (${excludeUserId}::bigint IS NULL OR ft.user_id <> ${excludeUserId}::bigint)
+  `;
+  return rows as Array<{ userId: number; userLabel: string; templateEncrypted: string }>;
+}
+
+export async function recordSecurityEvent(
+  event: string,
+  user: { id: number | null; label: string | null },
+  details: Record<string, string | number | boolean> = {}
+) {
+  const sql = getSql();
+  await sql`
+    INSERT INTO security_events (event, user_id, user_label, details)
+    VALUES (${event}, ${user.id}, ${user.label}, ${JSON.stringify(details)}::jsonb)
+  `;
+}
+
+export async function getSecurityEvents(limit = 200): Promise<SecurityEventEntry[]> {
+  const sql = getSql();
+  const rows = await sql`
+    SELECT id::int AS id, event, user_label AS "userLabel", details, created_at::text AS "createdAt"
+    FROM security_events
+    ORDER BY id DESC
+    LIMIT ${limit}
+  `;
+  return rows as SecurityEventEntry[];
+}
+
+// ---------- K6a: DPT resmi untuk mencocokkan pendaftaran mandiri
+
+export async function getOfficialDptStatus() {
+  const sql = getSql();
+  const rows = await sql`
+    SELECT COUNT(*)::int AS total, MAX(imported_at)::text AS "importedAt" FROM dpt_resmi
+  `;
+  return rows[0] as { total: number; importedAt: string | null };
+}
+
+export async function findOfficialDpt(nim: string) {
+  const sql = getSql();
+  const rows = await sql`SELECT nim, nama FROM dpt_resmi WHERE nim = ${nim} LIMIT 1`;
+  return (rows[0] ?? null) as { nim: string; nama: string } | null;
+}
+
+// Mengganti seluruh daftar DPT resmi dalam satu transaksi dan mencatatnya di log audit.
+export async function replaceOfficialDpt(entries: Array<{ nim: string; nama: string }>, actor: AuditActor) {
+  const sql = getSql();
+  const payload = JSON.stringify(entries);
+  await sql.transaction([
+    sql`DELETE FROM dpt_resmi`,
+    sql`
+      INSERT INTO dpt_resmi (nim, nama)
+      SELECT nim, nama FROM jsonb_to_recordset(${payload}::jsonb) AS d(nim TEXT, nama TEXT)
+    `,
+    sql`
+      INSERT INTO admin_audit_log (actor_id, actor_user_id, actor_name, action, details)
+      VALUES (${actor.id}, ${actor.userId}, ${actor.displayName}, 'dpt.impor',
+        jsonb_build_object('jumlahNim', ${entries.length}::int))
+    `
+  ]);
+  return entries.length;
 }

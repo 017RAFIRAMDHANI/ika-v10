@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { getFaceTemplateAvailability, markFaceVerified, saveFaceTemplate } from "@/lib/db";
+import { getFaceTemplateAvailability, markFaceVerified, recordSecurityEvent, saveFaceTemplate } from "@/lib/db";
+import { DUPLICATE_FACE_MESSAGE, findDuplicateFace } from "@/lib/face-duplicate";
 import { encryptFaceDescriptor, normalizeFaceDescriptor, validateFaceEvidence } from "@/lib/face";
 import {
   FACE_CHALLENGE_STEPS,
@@ -75,6 +76,16 @@ export async function POST(request: Request) {
       sourceDeviceClass: scan.sourceDeviceClass
     });
     if (!liveness.valid) return jsonError(liveness.message);
+
+    const duplicate = await findDuplicateFace(descriptor, session.id);
+    if (duplicate) {
+      await recordSecurityEvent("wajah.ganda", { id: session.id, label: `${session.userId} - ${session.displayName}` }, {
+        tahap: "aktivasi",
+        akunMirip: duplicate.userLabel,
+        skor: duplicate.score
+      });
+      return jsonError(DUPLICATE_FACE_MESSAGE, 409);
+    }
 
     const saved = await saveFaceTemplate(session.id, {
       templateRole: scan.templateRole,

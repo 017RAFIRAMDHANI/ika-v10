@@ -1,4 +1,4 @@
-# Panduan IKA v10 — Suara Rahasia, Log Audit, dan Hak Suara Khusus Pemilih
+# Panduan IKA v10 — Suara Rahasia, Log Audit, Hak Suara, dan Pengamanan Verifikasi Wajah
 
 v10 adalah proyek, repositori, dan database **terpisah** dari v9. v9 (folder
 `evoting-ika-unpad-claude`, repo `ika-v9`, database Neon lama) tidak diubah sama sekali,
@@ -11,9 +11,11 @@ sehingga selalu dapat dipakai kembali.
 | **K1** Suara rahasia | Tabel `voters` menyimpan `user_id` + `candidate_id`; admin dapat melihat, memfilter, dan mengekspor "siapa memilih siapa". | Tabel `voters` diganti `ballots`: hanya `candidate_id`, id UUID acak, tanpa waktu. Kolom/filter "Calon Terpilih" dan kolom "Calon Pilihan" di ekspor dihapus. `candidates.updated_at` tidak lagi diubah saat suara masuk agar waktu tidak dapat dicocokkan dengan pemilih. |
 | **K2** Jejak audit | Admin dapat mereset/menghapus suara tanpa jejak; tidak ada log. | Tabel `admin_audit_log` mencatat login admin, tambah/ubah/hapus akun, reset wajah, tambah/ubah/hapus kandidat, impor, dan ekspor — ditulis dalam statement SQL yang sama dengan aksinya. Fitur **reset hak pilih dihapus**; akun yang sudah memilih **tidak dapat dihapus** dan role-nya tidak dapat diubah. `ballots` dan `admin_audit_log` *append-only*. Menu baru **Log Audit** menampilkan riwayat dan rekonsiliasi suara. |
 | **K3** Hak suara | Larangan admin memilih hanya di tampilan; API tetap menerima suara admin. | `/api/vote`, `castVote` (SQL), dan seluruh API verifikasi wajah hanya menerima role `Alumni`. Admin tidak dapat mengubah role dirinya sendiri. |
+| **K5** Verifikasi wajah (v10.1) | Server mengirim skor kemiripan saat gagal dan percobaan tidak dibatasi, sehingga template dapat ditebak bertahap. | Skor tidak lagi dikirim (pesan hanya "tidak cocok" + sisa percobaan). Setelah **5 kali gagal**, verifikasi wajah akun itu **dikunci 15 menit** dan tercatat di Peringatan Keamanan. Berhasil atau reset wajah oleh admin membuka kunci. |
+| **K6** DPT terverifikasi (v10.1) | Pendaftaran mandiri menerima NIM apa pun dan satu wajah dapat mendaftarkan banyak akun. | **Wajah ganda:** wajah baru dibandingkan dengan seluruh wajah terdaftar saat pendaftaran dan aktivasi; bila sama mirip dengan akun lain, proses ditahan dan tercatat. **DPT resmi:** setelah panitia mengunggah daftar alumni (menu Import), pendaftaran mandiri hanya diterima untuk NIM di daftar dengan nama yang sesuai (gelar dan huruf besar/kecil diabaikan). |
 
-Yang **tidak** berubah: verifikasi wajah (model ArcFace, ambang 0.42, satu kali pindai),
-tampilan pemilih, pendaftaran, login, dan halaman hasil.
+Yang **tidak** berubah: model wajah (ArcFace, ambang 0.42, satu kali pindai), tampilan pemilih,
+login, dan halaman hasil. K4 (password awal akun impor = NIM) belum dikerjakan.
 
 ## 2. Instalasi
 
@@ -69,7 +71,28 @@ Skrip migrasi:
 Buka `database/data-awal.sql`, ganti `admin_password` (minimal 12 karakter), lalu jalankan di SQL
 Editor setelah `neon-manual.sql`.
 
-### 2.4 Menjalankan dan deploy
+### 2.4 Upgrade database v10.0 ke v10.1 (K5 & K6)
+
+Hanya untuk database v10 yang dibuat sebelum v10.1 (instalasi baru dengan `neon-manual.sql`
+terbaru sudah otomatis v10.1).
+
+```bash
+node --env-file=.env.local scripts/backup-v10.mjs   # backup penuh ke database/backup/
+```
+
+Lalu jalankan seluruh isi `database/migrasi-v10.1-k5-k6.sql` di Neon SQL Editor. Migrasi hanya
+menambah 2 kolom (`users.face_failed_attempts`, `users.face_locked_until`) dan 2 tabel
+(`security_events`, `dpt_resmi`); tidak ada data yang diubah. Pembatalan:
+`database/rollback-v10.1-ke-v10.0.sql`.
+
+### 2.5 DPT resmi (opsional, disarankan)
+
+Menu **Import → DPT Resmi**: unggah .xlsx/.csv dengan NIM di kolom A dan Nama di kolom B (seperti
+`databook.xlsx`), atau baris pertama berjudul `NIM` dan `Nama`. Unggahan baru **mengganti** seluruh
+daftar. Atur kolom NIM sebagai Teks agar angka 0 di depan tidak hilang. Selama DPT resmi belum
+diunggah, halaman Import menampilkan peringatan dan pendaftaran mandiri tidak dicocokkan.
+
+### 2.6 Menjalankan dan deploy
 
 ```bash
 npm run dev      # lokal: http://localhost:3000
@@ -103,6 +126,13 @@ yang sama dengan `.env.local` (tanpa variabel `V9_*`).
 | 7 | Tambah/ubah/hapus akun atau kandidat, reset wajah, impor | Muncul di menu **Log Audit** dengan nama admin dan waktu. |
 | 8 | `UPDATE`/`DELETE` langsung pada `ballots` atau `admin_audit_log` | Ditolak oleh trigger database. |
 | 9 | Menu Log Audit → Rekonsiliasi | Status "Konsisten" (surat suara = penghitung = akun yang memilih). |
+| 10 | Verifikasi wajah gagal | Pesan tanpa skor, menampilkan sisa percobaan. |
+| 11 | Verifikasi wajah gagal 5 kali | Dikunci 15 menit (429); muncul di Peringatan Keamanan; reset wajah oleh admin membuka kunci. |
+| 12 | Aktivasi/pendaftaran dengan wajah yang sudah dimiliki akun lain | Ditolak (409) "Wajah ini sangat mirip dengan akun lain"; tercatat di Peringatan Keamanan. |
+| 13 | Unggah DPT resmi, lalu daftar dengan NIM di luar daftar / nama berbeda | Ditolak (409). NIM di daftar + nama sesuai diterima. |
+| 14 | Unggah file DPT berisi baris tidak valid | Ditolak dengan nomor baris; DPT lama tetap utuh. |
+
+Hasil uji otomatis terhadap aplikasi berjalan: K1–K3 57/57 lulus, K5/K6 32/32 lulus.
 
 ## 5. Batasan yang perlu dicatat di skripsi
 
@@ -116,4 +146,15 @@ yang sama dengan `.env.local` (tanpa variabel `V9_*`).
    **mencegahnya**. Pencegahan penuh memerlukan status pemilu (dibuka/ditutup) yang mengunci
    reset selama pemungutan suara (rekomendasi T1).
 3. Log audit hanya mencatat tindakan administrator, bukan tindakan pemilih, dan tidak pernah
-   mencatat pilihan kandidat.
+   mencatat pilihan kandidat. Peringatan keamanan (wajah dikunci/ganda) dicatat terpisah.
+4. **Liveness diperiksa di perangkat pemilih (K5c).** Kedip/tengok dan skor anti-spoof dihitung di
+   browser; server hanya menerima laporannya. Penyerang yang menguasai password dan foto korban,
+   serta mampu memodifikasi klien, secara teori dapat mengirim embedding dari foto disertai laporan
+   liveness palsu. K5a/K5b dan log keamanan mempersulit serta mencatat upaya ini, tetapi pencegahan
+   penuh memerlukan pemeriksaan liveness di server (video dikirim ke server) yang lebih lambat dan
+   menambah risiko privasi.
+5. Cek wajah ganda hanya membandingkan template ArcFace. Template model lama (faceres) tidak
+   dapat dibandingkan; reset wajah akun lama agar ikut terlindungi. Kembar identik dapat tertahan
+   dan memerlukan penanganan manual oleh panitia.
+6. Pencocokan nama DPT bersifat longgar (cukup satu kata nama sama); perlindungan utamanya adalah
+   NIM yang hanya dapat diklaim sekali dan cek wajah ganda.

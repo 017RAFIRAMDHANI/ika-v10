@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { createFaceChallenge } from "@/lib/face";
-import { getFaceTemplateAvailability, getFaceVerificationRecord } from "@/lib/db";
+import { createFaceChallenge, faceLockMessage } from "@/lib/face";
+import { getFaceLock, getFaceTemplateAvailability, getFaceVerificationRecord } from "@/lib/db";
 import {
   FACE_ARCFACE_MODEL_VERSION,
   FACE_DESCRIPTOR_ENGINES,
@@ -60,6 +60,8 @@ export async function GET(request: Request) {
     }
     if (mode.data !== "register" && session?.role !== "Alumni") return jsonError("Verifikasi wajah hanya untuk akun pemilih.", 403);
     if (mode.data !== "register" && session) {
+      const lockedUntil = await getFaceLock(session.id);
+      if (lockedUntil) return jsonError(faceLockMessage(lockedUntil), 429);
       const availability = await getFaceTemplateAvailability(session.id);
       const templateExists = profile.data.templateRole === "desktop-primary"
         ? availability.desktopPrimaryEnrolled

@@ -43,6 +43,15 @@ export const FACE_ARCFACE_MATCH_THRESHOLD = Number.isFinite(configuredArcFaceThr
   ? configuredArcFaceThreshold
   : 0.42;
 
+// K5b: verifikasi wajah dikunci sementara setelah percobaan gagal berturut-turut.
+export const FACE_MAX_FAILED_ATTEMPTS = 5;
+export const FACE_LOCK_MINUTES = 15;
+
+export function faceLockMessage(lockedUntil: string) {
+  const minutes = Math.max(1, Math.ceil((new Date(lockedUntil).getTime() - Date.now()) / 60_000));
+  return `Verifikasi wajah dikunci sementara karena terlalu banyak percobaan gagal. Coba lagi sekitar ${minutes} menit lagi atau hubungi panitia.`;
+}
+
 type ChallengePayload = {
   mode: FaceChallengeMode;
   userId: number | null;

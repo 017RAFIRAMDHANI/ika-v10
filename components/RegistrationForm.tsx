@@ -183,6 +183,9 @@ export default function RegistrationForm() {
           setAccessToken("");
           setCanonicalFace(null);
           setStep(1);
+        } else if (response.status === 400) {
+          // Sesi pemindaian kedaluwarsa/tidak valid: tampilkan kembali kamera agar dapat memindai ulang.
+          setCanonicalFace(null);
         }
         throw new Error(result.message || "Pendaftaran gagal.");
       }

@@ -1,6 +1,8 @@
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { createPublicVoter } from "@/lib/db";
+import { createPublicVoter, findOfficialDpt, getOfficialDptStatus, recordSecurityEvent } from "@/lib/db";
+import { DUPLICATE_FACE_MESSAGE, findDuplicateFace } from "@/lib/face-duplicate";
+import { namesMatch } from "@/lib/name-match";
 import { encryptFaceDescriptor, normalizeFaceDescriptor, validateFaceEvidence } from "@/lib/face";
 import {
   FACE_CHALLENGE_STEPS,
@@ -71,6 +73,18 @@ export async function POST(request: Request) {
       return jsonError("Akses pendaftaran kedaluwarsa atau tidak valid. Masukkan kembali Kode Primary DPT.", 403);
     }
 
+    // K6a: bila panitia sudah mengunggah DPT resmi, NIM wajib ada di daftar dan nama harus sesuai.
+    const dpt = await getOfficialDptStatus();
+    if (dpt.total > 0) {
+      const official = await findOfficialDpt(parsed.data.userId);
+      if (!official) {
+        return jsonError("NPM/NIM tidak terdaftar di DPT resmi. Periksa kembali NPM/NIM Anda atau hubungi panitia.", 409);
+      }
+      if (!namesMatch(official.nama, parsed.data.displayName)) {
+        return jsonError("Nama tidak sesuai dengan DPT resmi untuk NPM/NIM tersebut. Periksa penulisan nama atau hubungi panitia.", 409);
+      }
+    }
+
     const scans = parsed.data.faceTemplates.filter((scan) => scan.templateRole === "canonical-cross-device");
     if (scans.length !== 1) {
       return jsonError("Pendaftaran wajib berisi satu pemindaian wajah. Ulangi pemindaian wajah.");
@@ -80,6 +94,7 @@ export async function POST(request: Request) {
     }
 
     const templates = [];
+    let canonicalDescriptor: number[] | null = null;
     for (const scan of scans) {
       if (expectedEngineForRole(scan.templateRole) !== scan.descriptorEngine) {
         return jsonError("Engine descriptor tidak sesuai dengan peran template.");
@@ -97,6 +112,7 @@ export async function POST(request: Request) {
         sourceDeviceClass: scan.sourceDeviceClass
       });
       if (!liveness.valid) return jsonError(liveness.message);
+      canonicalDescriptor = descriptor;
       templates.push({
         templateRole: scan.templateRole,
         descriptorEngine: scan.descriptorEngine,
@@ -105,6 +121,17 @@ export async function POST(request: Request) {
         templateEncrypted: encryptFaceDescriptor(descriptor),
         qualityScore: Math.round(((scan.evidence.averageReal + scan.evidence.averageLive) / 2) * 1000) / 1000
       });
+    }
+
+    // K6b: satu wajah tidak boleh mendaftarkan lebih dari satu akun.
+    const duplicate = canonicalDescriptor ? await findDuplicateFace(canonicalDescriptor, null) : null;
+    if (duplicate) {
+      await recordSecurityEvent("wajah.ganda", { id: null, label: `${parsed.data.userId} - ${parsed.data.displayName}` }, {
+        tahap: "pendaftaran",
+        akunMirip: duplicate.userLabel,
+        skor: duplicate.score
+      });
+      return jsonError(DUPLICATE_FACE_MESSAGE, 409);
     }
 
     await createPublicVoter({

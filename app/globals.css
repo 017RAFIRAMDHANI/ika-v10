@@ -133,6 +133,12 @@ img {
   border: 1px solid #bbf7d0;
 }
 
+.alert-warning {
+  color: #c2410c;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+}
+
 .empty-state {
   text-align: center;
   padding: 42px 20px;

@@ -75,6 +75,19 @@ teratasi dengan memindai ulang di cahaya depan yang cukup.
 - Challenge bertanda tangan mengikat mode, user, urutan gestur, role, engine,
   versi model, dan kelas perangkat.
 
+## Pengamanan verifikasi (v10.1)
+
+- **Tanpa skor (K5a):** saat wajah tidak cocok, server hanya membalas "tidak cocok" dan sisa
+  percobaan. Skor tidak dikirim agar tidak dapat dipakai sebagai petunjuk menebak template.
+- **Batas percobaan (K5b):** 5 kali gagal berturut-turut mengunci verifikasi wajah akun tersebut
+  selama 15 menit (`FACE_MAX_FAILED_ATTEMPTS`, `FACE_LOCK_MINUTES` di `lib/face.ts`). Verifikasi
+  berhasil atau reset wajah oleh admin mengembalikan penghitung ke 0.
+- **Wajah ganda (K6b):** saat pendaftaran dan aktivasi, embedding baru dibandingkan dengan seluruh
+  template ArcFace aktif milik akun lain dengan ambang yang sama (0.42). Bila cocok, proses ditahan
+  dan dicatat di `security_events`; pendaftar tidak diberi tahu akun mana yang mirip.
+- **Batasan (K5c):** pemeriksaan liveness berjalan di perangkat pemilih. Lihat bagian Batasan di
+  `PANDUAN-V10.md`.
+
 ## Login dan bilik suara
 
 - Pendaftar baru selalu diverifikasi dengan `canonical-cross-device` ArcFace v2
