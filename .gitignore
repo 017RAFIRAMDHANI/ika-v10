@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+.vercel/
+*.log
+.DS_Store
+coverage/
+*.tsbuildinfo
+
+# Backup & data pribadi tidak boleh masuk repo publik
+database/backup/
+sample-data/
