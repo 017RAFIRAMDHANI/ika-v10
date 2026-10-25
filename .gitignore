@@ -12,3 +12,5 @@ coverage/
 # Backup & data pribadi tidak boleh masuk repo publik
 database/backup/
 sample-data/
+# Hasil skrip simulasi (kode login + wajah sintetis)
+scripts/simulasi/.hasil/

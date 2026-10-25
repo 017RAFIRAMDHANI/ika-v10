@@ -178,6 +178,30 @@ perolehan tiap kandidat sebelum reset. Database hanya mengizinkan penghapusan su
 transaksi reset ini; `DELETE` biasa tetap ditolak trigger. Upgrade: jalankan
 `database/migrasi-v10.7-reset-uji-coba.sql` (pembatalan `database/rollback-v10.7-ke-v10.6.sql`).
 
+### 2.5f Simulasi banyak pemilih (uji coba / uji beban)
+
+Untuk mencoba alur lengkap dengan banyak pemilih sebelum hari H (pernah dijalankan: 100 pemilih di
+`ika-v10.vercel.app`, 100/100 berhasil, sekitar 5 detik per pemilih, rekonsiliasi konsisten).
+Wajah memakai descriptor sintetis (bukan kamera); seluruh pemeriksaan server tetap berlaku.
+
+1. Pastikan status **Persiapan** (menu Pemilu; bila perlu *Kembali ke Persiapan* / *Reset Uji Coba*).
+2. Daftarkan pemilih simulasi (NIM `SIMULASI-001` dst., kode login acak yang tidak bentrok):
+   ```bash
+   node --env-file=.env.local scripts/simulasi/daftar-pemilih.mjs 100 https://ika-v10.vercel.app
+   ```
+   **Jangan menekan Buka Sekarang sebelum muncul `SELESAI`**, karena pendaftaran tertutup otomatis
+   begitu pemungutan dibuka (skrip berhenti dengan aman dan dapat dijalankan ulang untuk melanjutkan).
+3. Jalankan pemungutan acak (skrip menunggu sampai dibuka), lalu tekan **Buka Sekarang**:
+   ```bash
+   node --env-file=.env.local scripts/simulasi/pilih-acak.mjs https://ika-v10.vercel.app
+   ```
+   Di akhir tampil rekap: pilihan skrip = penghitung = surat suara di database.
+4. Bersihkan: **Reset Uji Coba** di menu Pemilu, lalu jalankan `database/hapus-akun-simulasi.sql` di
+   Neon SQL Editor (hanya akun ber-NIM `SIMULASI-` yang belum memilih; tercatat di log audit).
+
+Kode login dan wajah sintetis tersimpan di `scripts/simulasi/.hasil/` (di-.gitignore). Ganti URL
+dengan `http://localhost:3000` untuk mencoba di aplikasi lokal.
+
 ### 2.6 Menjalankan dan deploy
 
 ```bash

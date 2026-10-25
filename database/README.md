@@ -14,6 +14,7 @@
 | `migrasi-v10.7-reset-uji-coba.sql` | Upgrade ke v10.7: surat suara hanya dapat dihapus oleh transaksi Reset Uji Coba (menu Pemilu). |
 | `rollback-v10.7-ke-v10.6.sql` | Membatalkan migrasi v10.7 (surat suara kembali append-only tanpa pengecualian). |
 | `data-awal.sql` | Tiga kandidat + akun admin. **Hanya** untuk instalasi baru tanpa migrasi dari v9. Ganti `admin_user_id` dan `admin_password` terlebih dahulu (tidak ada admin bawaan). |
+| `hapus-akun-simulasi.sql` | Menghapus akun pemilih simulasi (NIM `SIMULASI-`) setelah Reset Uji Coba; tercatat di log audit. |
 | `hapus-template-dicabut.sql` | Opsional (v10.4): menghapus template wajah yang dicabut oleh versi sebelumnya. Tanpa perubahan skema. |
 | `reset-wajah-v4.sql` | Reset data wajah satu pemilih (manual). |
 | `reset-wajah-model-lama.sql` | Opsional: cabut seluruh template wajah model lama (faceres). |
