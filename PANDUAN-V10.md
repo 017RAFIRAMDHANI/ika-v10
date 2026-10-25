@@ -12,7 +12,7 @@ sehingga selalu dapat dipakai kembali.
 | **K2** Jejak audit | Admin dapat mereset/menghapus suara tanpa jejak; tidak ada log. | Tabel `admin_audit_log` mencatat login admin, tambah/ubah/hapus akun, reset wajah, tambah/ubah/hapus kandidat, impor, dan ekspor — ditulis dalam statement SQL yang sama dengan aksinya. Fitur **reset hak pilih dihapus**; akun yang sudah memilih **tidak dapat dihapus** dan role-nya tidak dapat diubah. `ballots` dan `admin_audit_log` *append-only*. Menu baru **Log Audit** menampilkan riwayat dan rekonsiliasi suara. |
 | **K3** Hak suara | Larangan admin memilih hanya di tampilan; API tetap menerima suara admin. | `/api/vote`, `castVote` (SQL), dan seluruh API verifikasi wajah hanya menerima role `Alumni`. Admin tidak dapat mengubah role dirinya sendiri. |
 | **K5** Verifikasi wajah (v10.1) | Server mengirim skor kemiripan saat gagal dan percobaan tidak dibatasi, sehingga template dapat ditebak bertahap. | Skor tidak lagi dikirim (pesan hanya "tidak cocok" + sisa percobaan). Setelah **5 kali gagal**, verifikasi wajah akun itu **dikunci 15 menit** dan tercatat di tabel `security_events`. Berhasil atau reset wajah oleh admin membuka kunci. |
-| **T1** Jadwal pemilu (v10.2) | Pemungutan suara terbuka kapan saja; tidak ada cara membuka/menutup pemilu; hasil per kandidat tampil selama voting. | Admin mengatur jadwal di menu **Pemilu** (`/admin/pemilu`) (waktu buka/tutup WIB, tombol *Buka Sekarang* dan *Tutup Sekarang*). Tiga tahap: **Persiapan** (aktivasi wajah, pendaftaran, kelola data; voting tertutup) → **Pemungutan Suara** (voting dibuka; kandidat, impor, kelola akun, dan reset wajah dikunci) → **Ditutup** (final bila sudah ada suara; selama belum ada satu suara pun, admin dapat menekan *Kembali ke Persiapan*, mis. setelah uji coba). Dua pengaturan admin: pendaftaran mandiri saat voting (bawaan: ditutup) dan hasil per kandidat untuk pemilih saat voting (bawaan: hanya jumlah pemilih). |
+| **T1** Jadwal pemilu (v10.2) | Pemungutan suara terbuka kapan saja; tidak ada cara membuka/menutup pemilu; hasil per kandidat tampil selama voting. | Admin mengatur jadwal di menu **Pemilu** (`/admin/pemilu`) (waktu buka/tutup WIB, tombol *Buka Sekarang* dan *Tutup Sekarang*). Tiga tahap: **Persiapan** (aktivasi wajah, pendaftaran, kelola data; voting tertutup) → **Pemungutan Suara** (voting dibuka; kandidat, impor, kelola akun, dan reset wajah dikunci) → **Ditutup** (final bila sudah ada suara; selama belum ada satu suara pun, admin dapat menekan *Kembali ke Persiapan*, mis. setelah uji coba). Sejak v10.6 tanpa pengaturan tambahan: pendaftaran mandiri **otomatis tertutup** saat pemungutan suara, dan perolehan per kandidat **selalu tampil** di Siaran Live (juga untuk pemilih). |
 | **Login** kode alumni (v10.2) | User ID = password = tahun angkatan + tanggal lahir + bulan lahir + tahun lahir, tetapi data lama ditulis tanpa angka 0 (mis. `19991261971`) sehingga pemilih yang mengetik 12 digit lengkap ditolak; petunjuk login tidak menjelaskan formatnya. | Login menerima kode **dengan atau tanpa angka 0** (juga spasi/titik/garis miring), mis. `200405031995` = `2004531995`. Pencarian bertingkat: kode persis lebih dulu, lalu penulisan setara; akun dipilih hanya bila password-nya cocok, dan bila kode cocok dengan lebih dari satu akun login ditolak dengan permintaan menulis 12 digit lengkap. Halaman login menampilkan format dan contoh `200419121995`. |
 | **T2** Draft pendaftaran (v10.4) | Kode Primary, password, token, dan template wajah disimpan di localStorage dalam teks biasa, padahal halaman menyebut kode "tidak disimpan di browser". | Draft hanya di **sessionStorage** (hilang saat tab ditutup, kedaluwarsa 30 menit) dan **tanpa** Kode Primary maupun data wajah; setelah halaman dimuat ulang, wajah dipindai lagi. Draft lama di localStorage dihapus otomatis. |
 | **T3** Data biometrik & UU PDP (v10.4) | Ekspor Excel memuat template wajah; template yang dicabut disimpan selamanya; template dari Excel dapat dipasang ke akun lain. | Template wajah **tidak lagi diekspor/diimpor lewat Excel** (backup data wajah hanya lewat `scripts/backup-v10.mjs`). Reset wajah **menghapus** template (bukan sekadar mencabut). Setelah pemungutan suara ditutup, menu **Pemilu** menampilkan **Retensi data wajah** dengan tombol *Hapus Semua Data Wajah* (konfirmasi ketik `HAPUS DATA WAJAH`, tercatat di Log Audit). Lembar petunjuk ekspor menandai file sebagai dokumen rahasia berisi data pribadi. |
@@ -121,7 +121,7 @@ mereka); akun lain tidak berubah dan tetap login seperti sebelumnya. Pembatalan:
 ### 2.5b Mengatur jadwal pemilu
 
 1. Buka menu **Pemilu** di panel admin (`/admin/pemilu`; di HP lewat **Lainnya → Jadwal Pemilu**).
-2. Isi **Waktu dibuka** dan **Waktu ditutup** (WIB), atur dua pilihan pengaturan, lalu **Simpan Jadwal**.
+2. Isi **Waktu dibuka** dan **Waktu ditutup** (WIB), lalu **Simpan Jadwal**.
    Kosongkan waktu ditutup bila pemungutan suara akan ditutup manual.
 3. Saat waktu dibuka tiba, pemungutan suara terbuka otomatis (atau tekan **Buka Sekarang**).
 4. Selama pemungutan suara hanya waktu tutup yang dapat diubah (misalnya diperpanjang).
@@ -196,8 +196,8 @@ yang sama dengan `.env.local` (tanpa variabel `V9_*`).
 | 15 | Memilih saat Persiapan / setelah Ditutup | Ditolak (403) "belum dibuka" / "telah ditutup". |
 | 16 | Simpan jadwal dengan waktu tutup sebelum waktu buka / di masa lalu | Ditolak. |
 | 17 | Selama pemungutan: tambah/ubah/hapus kandidat, impor, kelola akun, reset wajah | Ditolak (409) "Dikunci selama pemungutan suara". |
-| 18 | Selama pemungutan: ubah waktu buka atau pengaturan | Ditolak; memperpanjang waktu tutup diizinkan. |
-| 19 | Siaran Live oleh pemilih selama pemungutan | Hanya jumlah pemilih yang sudah memilih (kecuali diizinkan admin). |
+| 18 | Selama pemungutan: ubah waktu buka | Ditolak; memperpanjang waktu tutup diizinkan. |
+| 19 | Siaran Live oleh pemilih selama pemungutan | Perolehan per kandidat tampil (v10.6); pendaftaran mandiri tertutup. |
 | 20 | Tutup Sekarang lalu coba buka lagi / ubah jadwal | Ditolak; tahap Ditutup bersifat final. |
 | 21 | Login dengan kode tanpa angka 0 / dengan angka 0 / dengan spasi | Ketiganya masuk ke akun yang sama. |
 | 22 | Login dengan kode yang cocok dengan dua akun berbeda | Ditolak (409), diminta mengetik 12 digit lengkap. |
@@ -265,3 +265,6 @@ pendaftaran mandiri lama mendapat NIM.
    perlindungannya berupa akses khusus admin, pencatatan `pemilih.ekspor` di Log Audit, dan penanda
    dokumen rahasia. Template wajah tetap terenkripsi tanpa pengikat ke akun (AAD); pemindahan
    template antarakun kini hanya mungkin bagi pengelola database, bukan lewat aplikasi.
+10. Atas keputusan panitia, perolehan suara per kandidat tampil di Siaran Live **selama** pemungutan
+    suara. Hal ini transparan, tetapi dapat memengaruhi pemilih yang belum memilih (efek ikut-ikutan /
+    *bandwagon*), yang perlu dibahas terkait asas **Bebas**.

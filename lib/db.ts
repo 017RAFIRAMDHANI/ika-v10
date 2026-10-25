@@ -1015,9 +1015,7 @@ export async function replaceOfficialDpt(entries: Array<{ nim: string; nama: str
 const EMPTY_ELECTION: ElectionSettings = {
   opensAt: null,
   closesAt: null,
-  closedManuallyAt: null,
-  registrationDuringVoting: false,
-  liveResultsDuringVoting: false
+  closedManuallyAt: null
 };
 
 // Jam database ikut dikembalikan: tahap dihitung dengan jam yang sama dengan trigger dan castVote,
@@ -1029,27 +1027,20 @@ export async function getElectionSettings(): Promise<{ settings: ElectionSetting
       to_json(p.dibuka_pada) #>> '{}' AS "opensAt",
       to_json(p.ditutup_pada) #>> '{}' AS "closesAt",
       to_json(p.ditutup_manual_pada) #>> '{}' AS "closedManuallyAt",
-      p.pendaftaran_saat_voting AS "registrationDuringVoting",
-      p.hasil_live_saat_voting AS "liveResultsDuringVoting",
       (extract(epoch FROM NOW()) * 1000)::float8 AS "dbNow"
     FROM (SELECT 1) AS jam
     LEFT JOIN pengaturan_pemilu p ON p.id = 1
   `;
   // Tanpa baris pengaturan (LEFT JOIN kosong) semua kolom NULL = jadwal kosong (Persiapan).
   const { dbNow, ...row } = rows[0] as ElectionSettings & { dbNow: number };
-  const settings: ElectionSettings = {
-    ...EMPTY_ELECTION,
-    ...row,
-    registrationDuringVoting: row.registrationDuringVoting ?? false,
-    liveResultsDuringVoting: row.liveResultsDuringVoting ?? false
-  };
+  const settings: ElectionSettings = { ...EMPTY_ELECTION, ...row };
   return { settings, now: Number(dbNow) };
 }
 
 // Aturan perubahan (final setelah ditutup, hanya waktu tutup selama pemungutan) juga dijaga trigger.
 export async function saveElectionSchedule(
   // opensAt "tetap": kolom dibuka_pada tidak ditulis (dipakai selama pemungutan suara).
-  data: { opensAt: Date | null | "tetap"; closesAt: Date | null; registrationDuringVoting: boolean; liveResultsDuringVoting: boolean },
+  data: { opensAt: Date | null | "tetap"; closesAt: Date | null },
   actor: AuditActor
 ) {
   const sql = getSql();
@@ -1061,20 +1052,16 @@ export async function saveElectionSchedule(
       SET
         dibuka_pada = CASE WHEN ${data.opensAt === "tetap"}::boolean THEN dibuka_pada
           ELSE ${data.opensAt === "tetap" ? null : data.opensAt?.toISOString() ?? null}::timestamptz END,
-        ditutup_pada = ${data.closesAt?.toISOString() ?? null}::timestamptz,
-        pendaftaran_saat_voting = ${data.registrationDuringVoting}::boolean,
-        hasil_live_saat_voting = ${data.liveResultsDuringVoting}::boolean
+        ditutup_pada = ${data.closesAt?.toISOString() ?? null}::timestamptz
       WHERE id = 1
-      RETURNING dibuka_pada, ditutup_pada, pendaftaran_saat_voting, hasil_live_saat_voting
+      RETURNING dibuka_pada, ditutup_pada
     ), logged AS (
       INSERT INTO admin_audit_log (actor_id, actor_user_id, actor_name, action, target_type, target_label, details)
       SELECT ${actor.id}, ${actor.userId}, ${actor.displayName}, 'pemilu.jadwal', 'pemilu', 'Jadwal pemilu',
         jsonb_strip_nulls(jsonb_build_object(
           'dibuka', to_char(u.dibuka_pada AT TIME ZONE 'Asia/Jakarta', 'DD-MM-YYYY HH24:MI') || ' WIB',
           'ditutup', to_char(u.ditutup_pada AT TIME ZONE 'Asia/Jakarta', 'DD-MM-YYYY HH24:MI') || ' WIB',
-          'ditutupSebelum', to_char(p.ditutup_pada AT TIME ZONE 'Asia/Jakarta', 'DD-MM-YYYY HH24:MI') || ' WIB',
-          'pendaftaranSaatVoting', u.pendaftaran_saat_voting,
-          'hasilLiveSaatVoting', u.hasil_live_saat_voting
+          'ditutupSebelum', to_char(p.ditutup_pada AT TIME ZONE 'Asia/Jakarta', 'DD-MM-YYYY HH24:MI') || ' WIB'
         ))
       FROM updated u
       CROSS JOIN previous p

@@ -22,8 +22,6 @@ export default function ElectionControl({ settings, phase, faceTemplateCount, ba
   const router = useRouter();
   const [opensAt, setOpensAt] = useState(toWibInput(settings.opensAt));
   const [closesAt, setClosesAt] = useState(toWibInput(settings.closesAt));
-  const [registration, setRegistration] = useState(settings.registrationDuringVoting);
-  const [liveResults, setLiveResults] = useState(settings.liveResultsDuringVoting);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -51,9 +49,7 @@ export default function ElectionControl({ settings, phase, faceTemplateCount, ba
     void send({
       aksi: "jadwal",
       dibukaPada: opensAt,
-      ditutupPada: closesAt,
-      pendaftaranSaatVoting: registration,
-      hasilLiveSaatVoting: liveResults
+      ditutupPada: closesAt
     }, "Jadwal pemilu tersimpan.");
   }
 
@@ -103,8 +99,6 @@ export default function ElectionControl({ settings, phase, faceTemplateCount, ba
       <div className="detail-grid">
         <div className="detail-item"><span>Dibuka</span><strong>{settings.opensAt ? formatWib(settings.opensAt) : "Belum dijadwalkan"}</strong></div>
         <div className="detail-item"><span>Ditutup</span><strong>{settings.closedManuallyAt ? `${formatWib(settings.closedManuallyAt)} (manual)` : settings.closesAt ? formatWib(settings.closesAt) : "Sampai ditutup manual"}</strong></div>
-        <div className="detail-item"><span>Pendaftaran saat voting</span><strong>{settings.registrationDuringVoting ? "Dibuka" : "Ditutup"}</strong></div>
-        <div className="detail-item"><span>Hasil live untuk pemilih saat voting</span><strong>{settings.liveResultsDuringVoting ? "Per kandidat" : "Hanya jumlah pemilih"}</strong></div>
       </div>
 
       {phase === "ditutup" ? (
@@ -143,16 +137,6 @@ export default function ElectionControl({ settings, phase, faceTemplateCount, ba
             <label htmlFor="ditutupPada">Waktu ditutup (WIB)</label>
             <input className="app-input" type="datetime-local" id="ditutupPada" value={closesAt} onChange={(event) => setClosesAt(event.target.value)} />
           </div>
-          <div className="field">
-            <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <input type="checkbox" checked={registration} disabled={voting} onChange={(event) => setRegistration(event.target.checked)} />
-              <span>Izinkan pendaftaran mandiri selama pemungutan suara</span>
-            </label>
-            <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
-              <input type="checkbox" checked={liveResults} disabled={voting} onChange={(event) => setLiveResults(event.target.checked)} />
-              <span>Tampilkan perolehan per kandidat kepada pemilih selama pemungutan suara</span>
-            </label>
-          </div>
           <div className="form-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <LoadingButton busy={busy} type="submit" className="app-btn app-btn-primary"><i className="bx bx-calendar-check" /> Simpan Jadwal</LoadingButton>
             {phase === "persiapan" && <button type="button" className="app-btn app-btn-gold" disabled={busy} onClick={openNow}><i className="bx bx-play-circle" /> Buka Sekarang</button>}
@@ -161,8 +145,8 @@ export default function ElectionControl({ settings, phase, faceTemplateCount, ba
           </div>
           <p className="muted" style={{ gridColumn: "span 12", fontSize: ".75rem", margin: 0 }}>
             {voting
-              ? "Selama pemungutan suara hanya waktu tutup yang dapat diubah. Kandidat, impor data, kelola akun, dan reset wajah dikunci."
-              : "Kosongkan waktu ditutup bila pemungutan suara akan ditutup manual. Penutupan bersifat final."}
+              ? "Selama pemungutan suara hanya waktu tutup yang dapat diubah. Kandidat, impor data, kelola akun, reset wajah, dan pendaftaran mandiri dikunci."
+              : "Kosongkan waktu ditutup bila pemungutan suara akan ditutup manual. Pendaftaran mandiri otomatis tertutup saat pemungutan suara dibuka. Penutupan bersifat final."}
           </p>
         </form>
       )}

@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import ResultsChart from "@/components/ResultsChart";
-import { getAdminStats, getCandidates } from "@/lib/db";
-import { formatWib } from "@/lib/election";
+import { getCandidates } from "@/lib/db";
 import { getElectionState } from "@/lib/election-guard";
-import { getSessionUser, isAdmin } from "@/lib/session";
+import { getSessionUser } from "@/lib/session";
 import { mediaUrl } from "@/lib/media";
 import AutoRefresh from "@/components/AutoRefresh";
 export const dynamic = "force-dynamic";
@@ -16,30 +15,8 @@ export default async function LiveResultsPage() {
     redirect("/login");
   }
 
-  // Admin and Alumni can both view the live page.
-  // T1: selama pemungutan suara pemilih hanya melihat jumlah yang sudah memilih (kecuali diizinkan admin).
-  const { settings, phase } = await getElectionState();
-  if (!isAdmin(user) && phase === "pemungutan" && !settings.liveResultsDuringVoting) {
-    const stats = await getAdminStats();
-    const turnout = stats.voters ? Math.round((stats.voted / stats.voters) * 100) : 0;
-    return (
-      <AppShell user={user}>
-        <AutoRefresh interval={3000} />
-        <div className="page-heading">
-          <div>
-            <span className="eyebrow">Publik & Transparansi</span>
-            <h1>Siaran Live Pemungutan Suara</h1>
-            <p>Perolehan suara per kandidat ditampilkan setelah pemungutan suara ditutup{settings.closesAt ? ` (${formatWib(settings.closesAt)})` : ""}.</p>
-          </div>
-          <span className="live-chip"><span className="live-dot" /> {stats.voted} Pemilih Telah Memilih</span>
-        </div>
-        <section className="app-card card-pad quick-count">
-          <div className="quick-row-head"><span>Partisipasi pemilih</span><span>{turnout}% <small>({stats.voted} dari {stats.voters} pemilih)</small></span></div>
-          <div className="quick-track"><div className="quick-fill" style={{ width: `${turnout}%` }} /></div>
-        </section>
-      </AppShell>
-    );
-  }
+  // Admin dan pemilih sama-sama melihat perolehan per kandidat, juga selama pemungutan suara.
+  const { phase } = await getElectionState();
 
   const candidates = await getCandidates();
   const total = candidates.reduce((sum, candidate) => sum + candidate.votes, 0);

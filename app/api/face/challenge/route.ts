@@ -57,7 +57,7 @@ export async function GET(request: Request) {
     }
 
     const election = await getElectionState();
-    if (mode.data === "register" && !registrationOpen(election.settings, election.phase)) {
+    if (mode.data === "register" && !registrationOpen(election.phase)) {
       return jsonError(registrationClosedMessage(election.phase), 409);
     }
     if (election.phase === "ditutup") return jsonError("Pemungutan suara telah ditutup.", 409);

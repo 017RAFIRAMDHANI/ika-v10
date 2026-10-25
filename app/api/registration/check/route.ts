@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   try {
     if (!isSameOrigin(request)) return jsonError("Permintaan tidak valid.", 403);
     const election = await getElectionState();
-    if (!registrationOpen(election.settings, election.phase)) return jsonError(registrationClosedMessage(election.phase), 409);
+    if (!registrationOpen(election.phase)) return jsonError(registrationClosedMessage(election.phase), 409);
     const parsed = schema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return jsonError(parsed.error.issues[0]?.message ?? "Data pendaftaran tidak valid.");
     if (!validateRegistrationAccessToken(parsed.data.accessToken)) {

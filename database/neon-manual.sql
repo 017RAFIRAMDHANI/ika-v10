@@ -131,8 +131,9 @@ CREATE TABLE IF NOT EXISTS dpt_resmi (
 -- Satu baris pengaturan (id = 1).
 --   dibuka_pada / ditutup_pada : jadwal pemungutan suara (ditutup_pada kosong = sampai ditutup manual)
 --   ditutup_manual_pada        : waktu admin menekan "Tutup Sekarang" (final)
---   pendaftaran_saat_voting    : izinkan pendaftaran mandiri selama pemungutan suara
---   hasil_live_saat_voting     : tampilkan perolehan per kandidat kepada pemilih selama pemungutan suara
+--   pendaftaran_saat_voting /
+--   hasil_live_saat_voting     : tidak dipakai sejak v10.6 (pendaftaran selalu tertutup saat pemungutan
+--                                suara; perolehan per kandidat selalu tampil). Dibiarkan agar kompatibel.
 CREATE TABLE IF NOT EXISTS pengaturan_pemilu (
   id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   dibuka_pada TIMESTAMPTZ,

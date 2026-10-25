@@ -9,9 +9,7 @@ const schema = z.discriminatedUnion("aksi", [
   z.object({
     aksi: z.literal("jadwal"),
     dibukaPada: z.string().max(32),
-    ditutupPada: z.string().max(32),
-    pendaftaranSaatVoting: z.boolean(),
-    hasilLiveSaatVoting: z.boolean()
+    ditutupPada: z.string().max(32)
   }),
   z.object({ aksi: z.literal("buka") }),
   z.object({ aksi: z.literal("tutup") }),
@@ -74,18 +72,13 @@ export async function POST(request: Request) {
     const voting = phase === "pemungutan";
     if (voting) {
       // Selama pemungutan suara hanya waktu tutup yang dapat diubah.
-      const unchanged = sameMinute(opensAt, settings.opensAt)
-        && parsed.data.pendaftaranSaatVoting === settings.registrationDuringVoting
-        && parsed.data.hasilLiveSaatVoting === settings.liveResultsDuringVoting;
-      if (!unchanged) return jsonError("Selama pemungutan suara hanya waktu tutup yang dapat diubah.", 409);
+      if (!sameMinute(opensAt, settings.opensAt)) return jsonError("Selama pemungutan suara hanya waktu tutup yang dapat diubah.", 409);
     }
 
     const saved = await saveElectionSchedule({
       // Saat pemungutan, waktu buka tidak ditulis ulang agar presisinya tidak berubah.
       opensAt: voting ? "tetap" : opensAt,
-      closesAt,
-      registrationDuringVoting: voting ? settings.registrationDuringVoting : parsed.data.pendaftaranSaatVoting,
-      liveResultsDuringVoting: voting ? settings.liveResultsDuringVoting : parsed.data.hasilLiveSaatVoting
+      closesAt
     }, actor);
     if (!saved) return jsonError("Pengaturan pemilu tidak dapat disimpan.", 409);
     return Response.json({ ok: true });

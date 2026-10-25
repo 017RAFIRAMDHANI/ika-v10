@@ -6,8 +6,6 @@ export type ElectionSettings = {
   opensAt: string | null;
   closesAt: string | null;
   closedManuallyAt: string | null;
-  registrationDuringVoting: boolean;
-  liveResultsDuringVoting: boolean;
 };
 
 // T3: kalimat yang harus diketik admin untuk menghapus seluruh data wajah setelah pemilu ditutup.
@@ -26,8 +24,9 @@ export function electionPhase(settings: ElectionSettings, now = Date.now()): Ele
   return "pemungutan";
 }
 
-export function registrationOpen(settings: ElectionSettings, phase = electionPhase(settings)) {
-  return phase === "persiapan" || (phase === "pemungutan" && settings.registrationDuringVoting);
+// Pendaftaran mandiri hanya dibuka pada tahap Persiapan; otomatis tertutup saat pemungutan suara.
+export function registrationOpen(phase: ElectionPhase) {
+  return phase === "persiapan";
 }
 
 export function registrationClosedMessage(phase: ElectionPhase) {
