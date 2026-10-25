@@ -1,19 +1,8 @@
 import bcrypt from "bcryptjs";
 import ExcelJS from "exceljs";
 import { Readable } from "node:stream";
-import { importUsers, type StoredFaceTemplateInput } from "@/lib/db";
+import { importUsers } from "@/lib/db";
 import { electionLockMessage } from "@/lib/election-guard";
-import { decryptFaceDescriptor } from "@/lib/face";
-import {
-  FACE_DESCRIPTOR_ENGINES,
-  FACE_DEVICE_CLASSES,
-  FACE_MODEL_VERSION,
-  FACE_MODEL_VERSIONS,
-  FACE_TEMPLATE_ROLES,
-  expectedEngineForRole,
-  isSupportedFaceProfile,
-  type FaceModelVersion
-} from "@/lib/face-types";
 import { auditActor, getSessionUser, isAdmin } from "@/lib/session";
 import { isSameOrigin, jsonError } from "@/lib/security";
 
@@ -38,13 +27,6 @@ function optionalValue(value: string) {
   return trimmed && trimmed !== "-" ? trimmed : null;
 }
 
-function optionalDate(value: string) {
-  const normalized = optionalValue(value);
-  if (!normalized) return null;
-  const timestamp = Date.parse(normalized);
-  return Number.isNaN(timestamp) ? null : new Date(timestamp).toISOString();
-}
-
 type RawRecord = {
   userId: string;
   displayName: string;
@@ -55,58 +37,7 @@ type RawRecord = {
   cohort: string | null;
   graduationYear: string | null;
   domicile: string | null;
-  faceTemplates: StoredFaceTemplateInput[];
-  faceVerifiedAt: string | null;
 };
-
-function parseV4Templates(value: string, rowNumber: number): StoredFaceTemplateInput[] {
-  if (!value || value === "-") return [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    throw new Error(`JSON template wajah V4 pada baris ${rowNumber} tidak valid.`);
-  }
-  if (!Array.isArray(parsed) || parsed.length > 2) {
-    throw new Error(`Jumlah template wajah V4 pada baris ${rowNumber} tidak valid.`);
-  }
-  const templates = parsed.map((item) => {
-    if (!item || typeof item !== "object") throw new Error(`Template wajah V4 pada baris ${rowNumber} tidak valid.`);
-    const value = item as Record<string, unknown>;
-    const templateRole = String(value.templateRole ?? "") as StoredFaceTemplateInput["templateRole"];
-    const descriptorEngine = String(value.descriptorEngine ?? "") as StoredFaceTemplateInput["descriptorEngine"];
-    const sourceDeviceClass = String(value.sourceDeviceClass ?? "") as StoredFaceTemplateInput["sourceDeviceClass"];
-    const templateEncrypted = String(value.templateEncrypted ?? "");
-    const modelVersion = String(value.modelVersion ?? "");
-    if (
-      !FACE_TEMPLATE_ROLES.includes(templateRole)
-      || !FACE_DESCRIPTOR_ENGINES.includes(descriptorEngine)
-      || !FACE_DEVICE_CLASSES.includes(sourceDeviceClass)
-      || expectedEngineForRole(templateRole) !== descriptorEngine
-      || !FACE_MODEL_VERSIONS.includes(modelVersion as FaceModelVersion)
-      || !isSupportedFaceProfile(templateRole, modelVersion as FaceModelVersion)
-      || !templateEncrypted
-    ) {
-      throw new Error(`Metadata template wajah V4 pada baris ${rowNumber} tidak valid.`);
-    }
-    decryptFaceDescriptor(templateEncrypted);
-    const quality = value.qualityScore === null || value.qualityScore === undefined ? null : Number(value.qualityScore);
-    return {
-      templateRole,
-      descriptorEngine,
-      modelVersion,
-      sourceDeviceClass,
-      templateEncrypted,
-      qualityScore: Number.isFinite(quality) && quality !== null && quality >= 0 && quality <= 1 ? quality : null,
-      enrolledAt: optionalDate(String(value.enrolledAt ?? "")),
-      lastVerifiedAt: optionalDate(String(value.lastVerifiedAt ?? ""))
-    };
-  });
-  if (new Set(templates.map((template) => template.templateRole)).size !== templates.length) {
-    throw new Error(`Peran template wajah pada baris ${rowNumber} duplikat.`);
-  }
-  return templates;
-}
 
 export async function POST(request: Request) {
   try {
@@ -156,32 +87,8 @@ export async function POST(request: Request) {
         const displayName = read("Nama Lengkap");
         if (!userId || !displayName) continue;
 
-        const v4TemplateValue = optionalValue(read("Data Template Wajah V4 (JSON)"));
-        const legacyFaceTemplate = optionalValue(read("Data Wajah Terenkripsi"));
-        let faceTemplates: StoredFaceTemplateInput[] = [];
-        if (v4TemplateValue) {
-          try {
-            faceTemplates = parseV4Templates(v4TemplateValue, rowNumber);
-          } catch (error) {
-            return jsonError(`Data wajah pada baris ${rowNumber} tidak valid: ${error instanceof Error ? error.message : "gagal dibaca"}`);
-          }
-        } else if (legacyFaceTemplate) {
-          try {
-            decryptFaceDescriptor(legacyFaceTemplate);
-            faceTemplates = [{
-              templateRole: "desktop-primary",
-              descriptorEngine: "human-webgl-v1",
-              modelVersion: FACE_MODEL_VERSION,
-              sourceDeviceClass: "desktop",
-              templateEncrypted: legacyFaceTemplate,
-              qualityScore: null,
-              enrolledAt: optionalDate(read("Waktu Daftar Wajah")),
-              lastVerifiedAt: optionalDate(read("Waktu Verifikasi Wajah"))
-            }];
-          } catch (error) {
-            return jsonError(`Data wajah lama pada baris ${rowNumber} tidak valid: ${error instanceof Error ? error.message : "gagal dibaca"}`);
-          }
-        }
+        // T3: kolom template wajah pada file ekspor lama diabaikan; data biometrik tidak dipulihkan
+        // dari Excel agar tidak dapat dipindahkan ke akun lain. Gunakan backup SQL untuk data wajah.
         rawRecords.push({
           userId,
           displayName,
@@ -191,9 +98,7 @@ export async function POST(request: Request) {
           studyProgram: optionalValue(read("Program Studi")),
           cohort: optionalValue(read("Angkatan")),
           graduationYear: optionalValue(read("Tahun Lulus")),
-          domicile: optionalValue(read("Domisili")),
-          faceTemplates,
-          faceVerifiedAt: faceTemplates.length ? optionalDate(read("Waktu Verifikasi Wajah")) : null
+          domicile: optionalValue(read("Domisili"))
         });
       } else {
         const userId = valueToString(row.getCell(11).value);
@@ -208,9 +113,7 @@ export async function POST(request: Request) {
           studyProgram: null,
           cohort: null,
           graduationYear: null,
-          domicile: null,
-          faceTemplates: [],
-          faceVerifiedAt: null
+          domicile: null
         });
       }
     }
@@ -238,8 +141,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const imported = await importUsers(records, auditActor(session), backupFormat ? "backup" : "legacy");
-    return Response.json({ ok: true, imported, format: backupFormat ? "backup" : "legacy" });
+    const result = await importUsers(records, auditActor(session), backupFormat ? "backup" : "legacy");
+    return Response.json({
+      ok: true,
+      imported: result.saved,
+      created: result.created,
+      skipped: records.length - result.saved,
+      format: backupFormat ? "backup" : "legacy"
+    });
   } catch (error) {
     console.error("Voter import failed:", error);
     return jsonError("File tidak dapat diproses. Pastikan struktur file dan konfigurasi database sudah benar.", 500);

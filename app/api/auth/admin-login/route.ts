@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { verifyPassword } from "@/lib/auth";
-import { findUsersByLogin, logAdminAction, upgradeLegacyPassword } from "@/lib/db";
+import { findUsersByLogin, logAdminAction, replaceWeakAdminPassword, upgradeLegacyPassword } from "@/lib/db";
 import {
   accountLockedMessage,
   clearAccountFailures,
@@ -9,12 +9,14 @@ import {
   recordAccountFailure,
   recordNetworkFailure
 } from "@/lib/login-throttle";
+import { adminPasswordProblem } from "@/lib/password-policy";
 import { createSession, isAdmin } from "@/lib/session";
 import { isSameOrigin, jsonError } from "@/lib/security";
 
 const loginSchema = z.object({
   userId: z.string().trim().min(1, "User ID wajib diisi.").max(255),
-  password: z.string().min(1, "Password wajib diisi.").max(255)
+  password: z.string().min(1, "Password wajib diisi.").max(255),
+  newPassword: z.string().max(255).optional()
 });
 
 export async function POST(request: Request) {
@@ -44,7 +46,21 @@ export async function POST(request: Request) {
     await clearAccountFailures(user);
     if (!isAdmin(user)) return jsonError("Akun ini bukan akun administrator.", 403);
 
-    if (password.needsUpgrade) {
+    // T6: password admin lemah (mis. akun bawaan 2341030) wajib diganti sebelum masuk.
+    const weakness = adminPasswordProblem(parsed.data.password, user.userId);
+    if (weakness) {
+      const newPassword = parsed.data.newPassword ?? "";
+      if (!newPassword) {
+        return Response.json(
+          { ok: false, needsNewPassword: true, message: `Password administrator ini lemah (${weakness.replace(/\.$/, "")}). Buat password baru untuk melanjutkan.` },
+          { status: 409, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+      const problem = adminPasswordProblem(newPassword, user.userId);
+      if (problem) return jsonError(problem);
+      if (newPassword === parsed.data.password) return jsonError("Password baru harus berbeda dari password lama.");
+      await replaceWeakAdminPassword(user.id, await bcrypt.hash(newPassword, 12));
+    } else if (password.needsUpgrade) {
       await upgradeLegacyPassword(user.id, await bcrypt.hash(parsed.data.password, 12));
     }
 

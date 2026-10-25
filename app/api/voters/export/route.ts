@@ -29,8 +29,7 @@ export async function GET() {
     { header: "Lintas Perangkat", key: "canonicalEnrolled", width: 20 },
     { header: "Verifikasi Wajah", key: "faceVerified", width: 19 },
     { header: "Waktu Daftar Wajah", key: "faceEnrolledAt", width: 25 },
-    { header: "Waktu Verifikasi Wajah", key: "faceVerifiedAt", width: 27 },
-    { header: "Data Template Wajah V4 (JSON)", key: "faceTemplatesJson", width: 32 }
+    { header: "Waktu Verifikasi Wajah", key: "faceVerifiedAt", width: 27 }
   ];
   sheet.addRows(
     voters.map((voter) => ({
@@ -50,27 +49,24 @@ export async function GET() {
       canonicalEnrolled: voter.canonicalEnrolled ? "Aktif" : "Belum Aktif",
       faceVerified: voter.faceVerified ? "Terverifikasi" : "Belum Terverifikasi",
       faceEnrolledAt: voter.faceEnrolledAt ?? "-",
-      faceVerifiedAt: voter.faceVerifiedAt ?? "-",
-      faceTemplatesJson: voter.faceTemplatesJson ?? "-"
+      faceVerifiedAt: voter.faceVerifiedAt ?? "-"
     }))
   );
   sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
   sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF696CFF" } };
   sheet.autoFilter = { from: "A1", to: "Q1" };
   sheet.views = [{ state: "frozen", ySplit: 1 }];
-  sheet.getColumn(17).hidden = true;
   sheet.eachRow((row, rowNumber) => {
     row.alignment = { vertical: "middle", wrapText: rowNumber === 1 };
   });
 
-  const guide = workbook.addWorksheet("Petunjuk Backup");
+  const guide = workbook.addWorksheet("Petunjuk");
   guide.columns = [{ width: 24 }, { width: 92 }];
   guide.addRows([
-    ["Kegunaan", "File ini dapat diimpor kembali melalui menu Import Excel. Biodata dan data wajah terenkripsi akan dipulihkan."],
-    ["Password", "Password tidak diekspor. Akun yang dibuat ulang dari backup memakai password awal yang sama dengan User ID; akun yang masih ada tidak mengalami perubahan password."],
-    ["Kunci enkripsi", "FACE_DATA_SECRET pada sistem tujuan harus sama dengan sistem asal agar data wajah dapat dipulihkan."],
-    ["Kolom data wajah", "Kolom Q disembunyikan agar lembar mudah dibaca. Isinya memuat maksimal dua template V4 beserta metadata engine; jangan mengubahnya."],
-    ["Keamanan", "Simpan file ini sebagai dokumen rahasia karena memuat data pribadi dan template biometrik terenkripsi."]
+    ["Kegunaan", "Daftar pemilih untuk panitia. File ini dapat diimpor kembali melalui menu Import Excel untuk memulihkan biodata."],
+    ["Password", "Password tidak diekspor. Akun yang dibuat ulang dari file ini memakai password awal yang sama dengan User ID; password akun yang masih ada tidak diubah."],
+    ["Data wajah", "Template wajah (data biometrik) tidak diekspor ke Excel sesuai prinsip minimalisasi data UU PDP No. 27/2022. Backup lengkap termasuk data wajah terenkripsi hanya melalui scripts/backup-v10.mjs."],
+    ["Keamanan", "Dokumen rahasia: memuat data pribadi (NIM, email, WhatsApp, domisili). Simpan terbatas pada panitia dan hapus bila tidak lagi diperlukan."]
   ]);
   guide.getColumn(1).font = { bold: true, color: { argb: "FF0B132B" } };
   guide.eachRow((row) => { row.alignment = { vertical: "top", wrapText: true }; });

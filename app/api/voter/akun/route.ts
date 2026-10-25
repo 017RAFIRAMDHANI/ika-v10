@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { updateVoterAccount } from "@/lib/db";
+import { adminPasswordProblem } from "@/lib/password-policy";
 import { getSessionUser } from "@/lib/session";
 import { isSameOrigin, jsonError } from "@/lib/security";
 
@@ -17,6 +18,11 @@ export async function PATCH(request: Request) {
   
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return jsonError(parsed.error.issues[0]?.message ?? "Data akun tidak valid.");
+
+  if (parsed.data.password && session.role === "Admin") {
+    const problem = adminPasswordProblem(parsed.data.password, session.userId);
+    if (problem) return jsonError(problem, 400);
+  }
 
   try {
     let passwordHash = null;

@@ -52,9 +52,6 @@ export type VoterRecord = {
   updatedAt: string;
 };
 
-export type ExportVoterRecord = VoterRecord & {
-  faceTemplatesJson: string | null;
-};
 
 export type AdminUserRecord = {
   id: number;

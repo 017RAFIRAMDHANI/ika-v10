@@ -98,18 +98,28 @@ ON CONFLICT (name) DO UPDATE SET
   cohort = EXCLUDED.cohort,
   updated_at = NOW();
 
+-- T6: tidak ada lagi akun admin bawaan. Isi User ID dan password admin sendiri sebelum menjalankan.
 DO $$
 DECLARE
-  admin_user_id TEXT := '2341030';
+  admin_user_id TEXT := 'GANTI_USER_ID_ADMIN';
   admin_name TEXT := 'Administrator IKA';
   admin_password TEXT := 'GANTI_DENGAN_PASSWORD_ADMIN_YANG_KUAT';
 BEGIN
+  IF admin_user_id LIKE 'GANTI_%' OR length(admin_user_id) < 4 THEN
+    RAISE EXCEPTION 'Ganti admin_user_id di data-awal.sql (minimal 4 karakter) sebelum menjalankan file ini.';
+  END IF;
   IF admin_password LIKE 'GANTI_%' OR length(admin_password) < 12 THEN
     RAISE EXCEPTION 'Ganti admin_password di data-awal.sql (minimal 12 karakter) sebelum menjalankan file ini.';
   END IF;
+  IF position(lower(admin_user_id) IN lower(admin_password)) > 0 THEN
+    RAISE EXCEPTION 'admin_password tidak boleh memuat admin_user_id.';
+  END IF;
+  -- Akun yang sudah ada tidak dinaikkan menjadi admin diam-diam.
+  IF EXISTS (SELECT 1 FROM users WHERE user_id = admin_user_id) THEN
+    RAISE EXCEPTION 'User ID % sudah dipakai akun lain; pilih User ID admin yang berbeda.', admin_user_id;
+  END IF;
   INSERT INTO users (user_id, password_hash, display_name, role, has_voted)
-  VALUES (admin_user_id, crypt(admin_password, gen_salt('bf', 12)), admin_name, 'Admin', FALSE)
-  ON CONFLICT (user_id) DO UPDATE SET role = 'Admin', updated_at = NOW();
+  VALUES (admin_user_id, crypt(admin_password, gen_salt('bf', 12)), admin_name, 'Admin', FALSE);
 END
 $$;
 

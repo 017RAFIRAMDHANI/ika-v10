@@ -9,7 +9,8 @@
 | `rollback-v10.2-ke-v10.1.sql` | Membatalkan migrasi v10.2. |
 | `migrasi-v10.3-daftar-tanpa-password.sql` | Upgrade v10.2 ke v10.3 (kolom `users.nim` untuk pendaftaran mandiri tanpa password). |
 | `rollback-v10.3-ke-v10.2.sql` | Membatalkan migrasi v10.3. |
-| `data-awal.sql` | Tiga kandidat + akun admin. **Hanya** untuk instalasi baru tanpa migrasi dari v9. Ganti `admin_password` terlebih dahulu. |
+| `data-awal.sql` | Tiga kandidat + akun admin. **Hanya** untuk instalasi baru tanpa migrasi dari v9. Ganti `admin_user_id` dan `admin_password` terlebih dahulu (tidak ada admin bawaan). |
+| `hapus-template-dicabut.sql` | Opsional (v10.4): menghapus template wajah yang dicabut oleh versi sebelumnya. Tanpa perubahan skema. |
 | `reset-wajah-v4.sql` | Reset data wajah satu pemilih (manual). |
 | `reset-wajah-model-lama.sql` | Opsional: cabut seluruh template wajah model lama (faceres). |
 | `v9-lama/` | Arsip SQL v9 (skema lama dengan tabel `voters`). Hanya untuk referensi/pemulihan v9. |

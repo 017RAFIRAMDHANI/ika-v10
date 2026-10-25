@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { deleteAdminUser, getAdminUser, updateAdminUser } from "@/lib/db";
 import { electionLockMessage } from "@/lib/election-guard";
+import { adminPasswordProblem } from "@/lib/password-policy";
 import { auditActor, getSessionUser, isAdmin } from "@/lib/session";
 import { isSameOrigin, jsonError } from "@/lib/security";
 
@@ -28,6 +29,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return jsonError(parsed.error.issues[0]?.message ?? "Data akun tidak valid.");
   if (parsed.data.password && parsed.data.password.length < 6) return jsonError("Password minimal 6 karakter.");
+  if (parsed.data.password && parsed.data.role === "Admin") {
+    const problem = adminPasswordProblem(parsed.data.password, parsed.data.userId);
+    if (problem) return jsonError(problem);
+  }
 
   const target = await getAdminUser(id);
   if (!target) return jsonError("Akun tidak ditemukan.", 404);

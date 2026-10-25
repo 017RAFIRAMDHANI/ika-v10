@@ -60,7 +60,8 @@ export default function RegistrationForm() {
   const [success, setSuccess] = useState("");
   const [loginCode, setLoginCode] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
-  const SESSION_KEY = "dpt_registration_draft_v2";
+  // T2: draft hanya di sessionStorage (hilang saat tab ditutup) dan tanpa Kode Primary maupun data wajah.
+  const SESSION_KEY = "dpt_registration_draft_v3";
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDeviceClass(detectFaceDeviceClass()), 0);
@@ -74,19 +75,22 @@ export default function RegistrationForm() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(SESSION_KEY);
+      // Draft versi lama di localStorage memuat kode, password, dan data wajah: dihapus.
+      localStorage.removeItem("dpt_registration_draft");
+      localStorage.removeItem("dpt_registration_draft_v2");
+      const saved = sessionStorage.getItem(SESSION_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
-          localStorage.removeItem(SESSION_KEY);
-        } else {
+          sessionStorage.removeItem(SESSION_KEY);
+        } else if (parsed.accessToken) {
           // eslint-disable-next-line react-hooks/set-state-in-effect
-          if (parsed.step) setStep(parsed.step);
-          if (parsed.primaryCode) setPrimaryCode(parsed.primaryCode);
-          if (parsed.accessToken) setAccessToken(parsed.accessToken);
+          setAccessToken(parsed.accessToken);
           if (parsed.data) setData({ ...initialData, ...parsed.data });
-          if (parsed.canonicalFace) setCanonicalFace(parsed.canonicalFace);
+          if (parsed.loginCode) setLoginCode(parsed.loginCode);
           if (parsed.consent !== undefined) setConsent(parsed.consent);
+          // Wajah tidak disimpan: setelah dimuat ulang, langkah 3 dimulai dari pemindaian lagi.
+          if (parsed.step >= 2) setStep(parsed.step === 3 && parsed.loginCode ? 3 : 2);
         }
       }
     } catch {
@@ -97,21 +101,23 @@ export default function RegistrationForm() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    const draft = {
-      step,
-      primaryCode,
-      accessToken,
-      data,
-      canonicalFace,
-      consent,
-      expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes expiration
-    };
     try {
-      localStorage.setItem(SESSION_KEY, JSON.stringify(draft));
+      if (!accessToken) {
+        sessionStorage.removeItem(SESSION_KEY);
+        return;
+      }
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+        step,
+        accessToken,
+        data,
+        loginCode,
+        consent,
+        expiresAt: Date.now() + 30 * 60 * 1000
+      }));
     } catch {
       // ignore storage errors
     }
-  }, [isLoaded, step, primaryCode, accessToken, data, canonicalFace, consent]);
+  }, [isLoaded, step, accessToken, data, loginCode, consent]);
 
   function update<K extends keyof RegistrationData>(key: K, value: RegistrationData[K]) {
     setData((current) => ({ ...current, [key]: value }));
@@ -142,6 +148,7 @@ export default function RegistrationForm() {
         throw new Error(result.message || "Kode Primary DPT tidak dapat diverifikasi.");
       }
       setAccessToken(result.accessToken);
+      setPrimaryCode("");
       moveTo(2);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Kode Primary DPT tidak dapat diverifikasi.");
@@ -225,7 +232,7 @@ export default function RegistrationForm() {
         throw new Error(result.message || "Pendaftaran gagal.");
       }
       try {
-        localStorage.removeItem(SESSION_KEY);
+        sessionStorage.removeItem(SESSION_KEY);
       } catch {
         // ignore
       }

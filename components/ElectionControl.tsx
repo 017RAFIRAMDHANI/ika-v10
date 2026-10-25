@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import LoadingButton from "@/components/LoadingButton";
 import {
   ELECTION_PHASE_LABELS,
+  FACE_PURGE_CONFIRMATION,
   formatWib,
   toWibInput,
   type ElectionPhase,
@@ -17,7 +18,7 @@ const phaseBadge: Record<ElectionPhase, string> = {
   ditutup: "badge-neutral"
 };
 
-export default function ElectionControl({ settings, phase }: { settings: ElectionSettings; phase: ElectionPhase }) {
+export default function ElectionControl({ settings, phase, faceTemplateCount }: { settings: ElectionSettings; phase: ElectionPhase; faceTemplateCount: number }) {
   const router = useRouter();
   const [opensAt, setOpensAt] = useState(toWibInput(settings.opensAt));
   const [closesAt, setClosesAt] = useState(toWibInput(settings.closesAt));
@@ -61,6 +62,26 @@ export default function ElectionControl({ settings, phase }: { settings: Electio
     void send({ aksi: "buka" }, "Pemungutan suara dibuka.");
   }
 
+  // T3: retensi data biometrik. Setelah pemilu ditutup, data wajah tidak diperlukan lagi.
+  async function purgeFaceData() {
+    const typed = window.prompt(`Hapus SEMUA data wajah (${faceTemplateCount} template)? Tindakan ini permanen. Ketik ${FACE_PURGE_CONFIRMATION} untuk melanjutkan.`);
+    if (typed === null) return;
+    setBusy(true); setMessage(""); setError("");
+    try {
+      const response = await fetch("/api/admin/data-wajah", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ konfirmasi: typed.trim() })
+      });
+      const result = await response.json() as { deleted?: number; message?: string };
+      if (!response.ok) throw new Error(result.message || "Data wajah gagal dihapus.");
+      setMessage(`${result.deleted ?? 0} template wajah dihapus.`);
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Data wajah gagal dihapus.");
+    } finally { setBusy(false); }
+  }
+
   function closeNow() {
     if (!window.confirm("Tutup pemungutan suara SEKARANG? Penutupan bersifat FINAL dan tidak dapat dibuka kembali.")) return;
     if (!window.confirm("Konfirmasi sekali lagi: tutup pemungutan suara secara permanen?")) return;
@@ -81,7 +102,22 @@ export default function ElectionControl({ settings, phase }: { settings: Electio
       </div>
 
       {phase === "ditutup" ? (
-        <div className="alert alert-success" role="status">Pemungutan suara telah ditutup. Hasil sudah final dan pengaturan pemilu tidak dapat diubah.</div>
+        <>
+          <div className="alert alert-success" role="status">Pemungutan suara telah ditutup. Hasil sudah final dan pengaturan pemilu tidak dapat diubah.</div>
+          <div className="detail-section" style={{ marginTop: 16 }}>
+            <strong>Retensi data wajah (UU PDP)</strong>
+            <p className="muted" style={{ fontSize: ".78rem", margin: "6px 0 12px" }}>
+              {faceTemplateCount > 0
+                ? `Masih tersimpan ${faceTemplateCount} template wajah terenkripsi. Setelah hasil pemilu disahkan, data biometrik ini tidak diperlukan lagi dan sebaiknya dihapus.`
+                : "Seluruh data wajah sudah dihapus."}
+            </p>
+            {faceTemplateCount > 0 && (
+              <button type="button" className="app-btn app-btn-danger" disabled={busy} onClick={() => void purgeFaceData()}>
+                <i className="bx bx-trash" /> Hapus Semua Data Wajah
+              </button>
+            )}
+          </div>
+        </>
       ) : (
         <form className="form-grid" onSubmit={save} style={{ marginTop: 16 }}>
           <div className="field half">

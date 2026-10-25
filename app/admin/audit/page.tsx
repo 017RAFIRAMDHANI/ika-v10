@@ -7,10 +7,12 @@ export const dynamic = "force-dynamic";
 
 const actionLabels: Record<string, string> = {
   "admin.login": "Login administrator",
+  "admin.ganti_password": "Ganti password administrator (wajib, password lemah)",
   "akun.tambah": "Tambah akun",
   "akun.ubah": "Ubah akun",
   "akun.hapus": "Hapus akun",
   "wajah.reset": "Reset data wajah",
+  "wajah.hapus_semua": "Hapus seluruh data wajah (retensi)",
   "kandidat.tambah": "Tambah kandidat",
   "kandidat.ubah": "Ubah kandidat",
   "kandidat.hapus": "Hapus kandidat",

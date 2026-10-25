@@ -7,7 +7,6 @@ import type {
   AuditLogEntry,
   Candidate,
   SecurityEventEntry,
-  ExportVoterRecord,
   UserRole,
   VoteIntegrity,
   VoterRecord
@@ -298,7 +297,7 @@ export async function getVoter(id: number) {
   return (rows[0] ?? null) as VoterRecord | null;
 }
 
-export async function getVotersForExport(): Promise<ExportVoterRecord[]> {
+export async function getVotersForExport(): Promise<VoterRecord[]> {
   const sql = getSql();
   const rows = await sql`
     SELECT
@@ -325,8 +324,7 @@ export async function getVotersForExport(): Promise<ExportVoterRecord[]> {
       u.face_verified_at::text AS "faceVerifiedAt",
       u.registration_source AS "registrationSource",
       u.created_at::text AS "createdAt",
-      u.updated_at::text AS "updatedAt",
-      face_data.templates_json::text AS "faceTemplatesJson"
+      u.updated_at::text AS "updatedAt"
     FROM users u
     LEFT JOIN LATERAL (
       SELECT
@@ -334,26 +332,18 @@ export async function getVotersForExport(): Promise<ExportVoterRecord[]> {
         BOOL_OR(ft.template_role = 'desktop-primary') AS desktop_primary,
         BOOL_OR(ft.template_role = 'mobile-primary') AS mobile_primary,
         BOOL_OR(ft.template_role = 'canonical-cross-device') AS canonical,
-        MIN(ft.enrolled_at) AS first_enrolled_at,
-        JSONB_AGG(JSONB_BUILD_OBJECT(
-          'templateRole', ft.template_role,
-          'descriptorEngine', ft.engine,
-          'modelVersion', ft.model_version,
-          'sourceDeviceClass', ft.source_device_class,
-          'templateEncrypted', ft.template_encrypted,
-          'qualityScore', ft.quality_score,
-          'enrolledAt', ft.enrolled_at,
-          'lastVerifiedAt', ft.last_verified_at
-        ) ORDER BY ft.template_role) AS templates_json
+        MIN(ft.enrolled_at) AS first_enrolled_at
       FROM user_face_templates ft
       WHERE ft.user_id = u.id AND ft.revoked_at IS NULL
     ) face_data ON TRUE
     WHERE u.role = 'Alumni'
     ORDER BY u.created_at ASC
   `;
-  return rows as ExportVoterRecord[];
+  return rows as VoterRecord[];
 }
 
+// Impor akun. Akun baru memakai password awal = User ID. T5: akun yang sudah ada tidak pernah diubah
+// password-nya, dan akun Admin tidak disentuh sama sekali. T3: data wajah tidak diimpor dari Excel.
 export async function importUsers(
   users: Array<{
     userId: string;
@@ -366,8 +356,6 @@ export async function importUsers(
     cohort: string | null;
     graduationYear: string | null;
     domicile: string | null;
-    faceTemplates: StoredFaceTemplateInput[];
-    faceVerifiedAt: string | null;
   }>,
   actor: AuditActor,
   format: "backup" | "legacy"
@@ -384,9 +372,7 @@ export async function importUsers(
       study_program: user.studyProgram,
       cohort: user.cohort,
       graduation_year: user.graduationYear,
-      domicile: user.domicile,
-      face_templates: user.faceTemplates,
-      face_verified_at: user.faceVerifiedAt
+      domicile: user.domicile
     }))
   );
   const rows = await sql`
@@ -402,93 +388,46 @@ export async function importUsers(
         study_program TEXT,
         cohort TEXT,
         graduation_year TEXT,
-        domicile TEXT,
-        face_templates JSONB,
-        face_verified_at TIMESTAMPTZ
+        domicile TEXT
       )
     ), saved AS (
       INSERT INTO users (
         user_id, display_name, password_hash, role, has_voted,
         email, whatsapp, study_program, cohort, graduation_year, domicile,
-        face_verified_at, registration_source
+        registration_source
       )
       SELECT
         user_id, display_name, password_hash, 'Alumni', FALSE,
         email, whatsapp, study_program, cohort, graduation_year, domicile,
-        face_verified_at,
         CASE WHEN update_password THEN 'ExcelLegacy' ELSE 'ExcelBackup' END
       FROM imported
       ON CONFLICT (user_id) DO UPDATE SET
         display_name = EXCLUDED.display_name,
-        password_hash = CASE
-          WHEN EXCLUDED.registration_source = 'ExcelLegacy'
-            THEN EXCLUDED.password_hash
-          ELSE users.password_hash
-        END,
         email = COALESCE(EXCLUDED.email, users.email),
         whatsapp = COALESCE(EXCLUDED.whatsapp, users.whatsapp),
         study_program = COALESCE(EXCLUDED.study_program, users.study_program),
         cohort = COALESCE(EXCLUDED.cohort, users.cohort),
         graduation_year = COALESCE(EXCLUDED.graduation_year, users.graduation_year),
         domicile = COALESCE(EXCLUDED.domicile, users.domicile),
-        face_verified_at = COALESCE(EXCLUDED.face_verified_at, users.face_verified_at),
         updated_at = NOW()
-      RETURNING id, user_id
-    ), template_rows AS (
-      SELECT
-        saved.id AS user_id,
-        template."templateRole" AS template_role,
-        template."descriptorEngine" AS engine,
-        template."modelVersion" AS model_version,
-        template."sourceDeviceClass" AS source_device_class,
-        template."templateEncrypted" AS template_encrypted,
-        template."qualityScore" AS quality_score,
-        template."enrolledAt" AS enrolled_at,
-        template."lastVerifiedAt" AS last_verified_at
-      FROM saved
-      JOIN imported ON imported.user_id = saved.user_id
-      CROSS JOIN LATERAL jsonb_to_recordset(COALESCE(imported.face_templates, '[]'::jsonb)) AS template(
-        "templateRole" TEXT,
-        "descriptorEngine" TEXT,
-        "modelVersion" TEXT,
-        "sourceDeviceClass" TEXT,
-        "templateEncrypted" TEXT,
-        "qualityScore" NUMERIC,
-        "enrolledAt" TIMESTAMPTZ,
-        "lastVerifiedAt" TIMESTAMPTZ
-      )
-    ), saved_templates AS (
-      INSERT INTO user_face_templates (
-        user_id, template_role, engine, model_version, descriptor_length,
-        template_encrypted, source_device_class, quality_score, enrolled_at, last_verified_at
-      )
-      SELECT
-        user_id, template_role, engine, model_version, 1024,
-        template_encrypted, source_device_class, quality_score,
-        COALESCE(enrolled_at, NOW()), last_verified_at
-      FROM template_rows
-      ON CONFLICT (user_id, template_role) WHERE revoked_at IS NULL
-      DO UPDATE SET
-        engine = EXCLUDED.engine,
-        model_version = EXCLUDED.model_version,
-        descriptor_length = EXCLUDED.descriptor_length,
-        template_encrypted = EXCLUDED.template_encrypted,
-        source_device_class = EXCLUDED.source_device_class,
-        quality_score = EXCLUDED.quality_score,
-        enrolled_at = EXCLUDED.enrolled_at,
-        last_verified_at = EXCLUDED.last_verified_at
-      RETURNING id
+      WHERE users.role = 'Alumni'
+      RETURNING id, user_id, (xmax = 0) AS created
     ), logged AS (
       INSERT INTO admin_audit_log (actor_id, actor_user_id, actor_name, action, details)
       VALUES (
         ${actor.id}, ${actor.userId}, ${actor.displayName}, 'pemilih.impor',
-        jsonb_build_object('format', ${format}::text, 'jumlahAkun', (SELECT COUNT(*) FROM saved))
+        jsonb_build_object(
+          'format', ${format}::text,
+          'jumlahAkun', (SELECT COUNT(*) FROM saved),
+          'akunBaru', (SELECT COUNT(*) FROM saved WHERE created),
+          'dilewati', ${users.length}::int - (SELECT COUNT(*) FROM saved)
+        )
       )
       RETURNING id
     )
-    SELECT COUNT(*)::int AS count FROM saved
+    SELECT COUNT(*)::int AS saved, COUNT(*) FILTER (WHERE created)::int AS created FROM saved
   `;
-  return Number(rows[0]?.count ?? 0);
+  return { saved: Number(rows[0]?.saved ?? 0), created: Number(rows[0]?.created ?? 0) };
 }
 
 // Pendaftaran mandiri: NIM sudah dipakai, atau kode login (salah satu penulisannya) sudah dipakai akun lain.
@@ -652,13 +591,14 @@ export async function markFaceVerified(userId: number, templateRole: FaceTemplat
   return rows.length === 1;
 }
 
+// T3: template wajah yang direset langsung dihapus (bukan sekadar dicabut) agar data biometrik
+// yang tidak dipakai lagi tidak tersimpan.
 export async function resetUserFaceTemplates(userId: number, actor: AuditActor) {
   const sql = getSql();
   const rows = await sql`
     WITH reset_templates AS (
-      UPDATE user_face_templates
-      SET revoked_at = NOW(), updated_at = NOW()
-      WHERE user_id = ${userId} AND revoked_at IS NULL
+      DELETE FROM user_face_templates
+      WHERE user_id = ${userId}
       RETURNING user_id
     ), reset_user AS (
       UPDATE users
@@ -670,7 +610,7 @@ export async function resetUserFaceTemplates(userId: number, actor: AuditActor) 
       INSERT INTO admin_audit_log (actor_id, actor_user_id, actor_name, action, target_type, target_id, target_label, details)
       SELECT ${actor.id}, ${actor.userId}, ${actor.displayName}, 'wajah.reset', 'user', id,
         user_id || ' - ' || display_name,
-        jsonb_build_object('templateDicabut', (SELECT COUNT(*) FROM reset_templates))
+        jsonb_build_object('templateDihapus', (SELECT COUNT(*) FROM reset_templates))
       FROM reset_user
       RETURNING id
     )
@@ -1278,4 +1218,54 @@ export async function recordLoginThrottleFailure(key: string, scope: string, lim
       WHERE failures = ${limit}::int
     `
   ]);
+}
+
+// ---------- T3: retensi data wajah setelah pemilu
+
+export async function countFaceTemplates() {
+  const sql = getSql();
+  const rows = await sql`SELECT COUNT(*)::int AS total FROM user_face_templates`;
+  return Number(rows[0]?.total ?? 0);
+}
+
+// Menghapus seluruh template wajah (hanya dipanggil setelah pemungutan suara ditutup) dan
+// mencatatnya di log audit dalam statement yang sama.
+export async function deleteAllFaceTemplates(actor: AuditActor) {
+  const sql = getSql();
+  const rows = await sql`
+    WITH removed AS (
+      DELETE FROM user_face_templates RETURNING user_id
+    ), logged AS (
+      INSERT INTO admin_audit_log (actor_id, actor_user_id, actor_name, action, target_type, target_label, details)
+      VALUES (
+        ${actor.id}, ${actor.userId}, ${actor.displayName}, 'wajah.hapus_semua', 'pemilu', 'Retensi data wajah',
+        jsonb_build_object('templateDihapus', (SELECT COUNT(*) FROM removed), 'akun', (SELECT COUNT(DISTINCT user_id) FROM removed))
+      )
+      RETURNING id
+    )
+    SELECT COUNT(*)::int AS total FROM removed
+  `;
+  return Number(rows[0]?.total ?? 0);
+}
+
+// ---------- T6: penggantian password admin lemah saat login
+
+export async function replaceWeakAdminPassword(userId: number, passwordHash: string) {
+  const sql = getSql();
+  const rows = await sql`
+    WITH updated AS (
+      UPDATE users
+      SET password_hash = ${passwordHash}, login_failed_attempts = 0, login_locked_until = NULL, updated_at = NOW()
+      WHERE id = ${userId} AND role = 'Admin'
+      RETURNING id, user_id, display_name
+    ), logged AS (
+      INSERT INTO admin_audit_log (actor_id, actor_user_id, actor_name, action, target_type, target_id, target_label, details)
+      SELECT id, user_id, display_name, 'admin.ganti_password', 'user', id, user_id || ' - ' || display_name,
+        jsonb_build_object('alasan', 'password lama tidak memenuhi aturan')
+      FROM updated
+      RETURNING id
+    )
+    SELECT id FROM updated
+  `;
+  return rows.length === 1;
 }

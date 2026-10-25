@@ -10,6 +10,9 @@ export type ElectionSettings = {
   liveResultsDuringVoting: boolean;
 };
 
+// T3: kalimat yang harus diketik admin untuk menghapus seluruh data wajah setelah pemilu ditutup.
+export const FACE_PURGE_CONFIRMATION = "HAPUS DATA WAJAH";
+
 export const ELECTION_PHASE_LABELS: Record<ElectionPhase, string> = {
   persiapan: "Persiapan & Aktivasi",
   pemungutan: "Pemungutan Suara",

@@ -14,6 +14,10 @@ sehingga selalu dapat dipakai kembali.
 | **K5** Verifikasi wajah (v10.1) | Server mengirim skor kemiripan saat gagal dan percobaan tidak dibatasi, sehingga template dapat ditebak bertahap. | Skor tidak lagi dikirim (pesan hanya "tidak cocok" + sisa percobaan). Setelah **5 kali gagal**, verifikasi wajah akun itu **dikunci 15 menit** dan tercatat di Peringatan Keamanan. Berhasil atau reset wajah oleh admin membuka kunci. |
 | **T1** Jadwal pemilu (v10.2) | Pemungutan suara terbuka kapan saja; tidak ada cara membuka/menutup pemilu; hasil per kandidat tampil selama voting. | Admin mengatur jadwal di **Dashboard Admin → Status Pemilu** (waktu buka/tutup WIB, tombol *Buka Sekarang* dan *Tutup Sekarang*). Tiga tahap: **Persiapan** (aktivasi wajah, pendaftaran, kelola data; voting tertutup) → **Pemungutan Suara** (voting dibuka; kandidat, impor, kelola akun, dan reset wajah dikunci) → **Ditutup** (final, tidak dapat dibuka lagi). Dua pengaturan admin: pendaftaran mandiri saat voting (bawaan: ditutup) dan hasil per kandidat untuk pemilih saat voting (bawaan: hanya jumlah pemilih). |
 | **Login** kode alumni (v10.2) | User ID = password = tahun angkatan + tanggal lahir + bulan lahir + tahun lahir, tetapi data lama ditulis tanpa angka 0 (mis. `19991261971`) sehingga pemilih yang mengetik 12 digit lengkap ditolak; petunjuk login tidak menjelaskan formatnya. | Login menerima kode **dengan atau tanpa angka 0** (juga spasi/titik/garis miring), mis. `200405031995` = `2004531995`. Pencarian bertingkat: kode persis lebih dulu, lalu penulisan setara; akun dipilih hanya bila password-nya cocok, dan bila kode cocok dengan lebih dari satu akun login ditolak dengan permintaan menulis 12 digit lengkap. Halaman login menampilkan format dan contoh `200419121995`. |
+| **T2** Draft pendaftaran (v10.4) | Kode Primary, password, token, dan template wajah disimpan di localStorage dalam teks biasa, padahal halaman menyebut kode "tidak disimpan di browser". | Draft hanya di **sessionStorage** (hilang saat tab ditutup, kedaluwarsa 30 menit) dan **tanpa** Kode Primary maupun data wajah; setelah halaman dimuat ulang, wajah dipindai lagi. Draft lama di localStorage dihapus otomatis. |
+| **T3** Data biometrik & UU PDP (v10.4) | Ekspor Excel memuat template wajah; template yang dicabut disimpan selamanya; template dari Excel dapat dipasang ke akun lain. | Template wajah **tidak lagi diekspor/diimpor lewat Excel** (backup data wajah hanya lewat `scripts/backup-v10.mjs`). Reset wajah **menghapus** template (bukan sekadar mencabut). Setelah pemungutan suara ditutup, Dashboard Admin menampilkan **Retensi data wajah** dengan tombol *Hapus Semua Data Wajah* (konfirmasi ketik `HAPUS DATA WAJAH`, tercatat di Log Audit). Lembar petunjuk ekspor menandai file sebagai dokumen rahasia berisi data pribadi. |
+| **T5** Impor ulang (v10.4) | Mengimpor ulang file lama mereset password semua akun ke User ID, termasuk akun admin yang User ID-nya ada di file. | Impor hanya memberi password awal (= User ID) untuk **akun baru**. Password akun yang sudah ada **tidak pernah diubah**, dan baris yang User ID-nya milik akun **Admin dilewati**. Hasil impor menampilkan jumlah akun baru dan baris yang dilewati. |
+| **T6 + T4** Password admin (v10.4) | Skrip `data-awal.sql` membuat admin bawaan `2341030`/`2341030`; password admin cukup 6 karakter. | Password admin minimal **12 karakter** dan tidak boleh memuat User ID (tambah/ubah akun, halaman Akun). Admin yang masih memakai password lemah **wajib membuat password baru saat login** sebelum masuk (tercatat `admin.ganti_password`). `data-awal.sql` tidak lagi punya User ID bawaan dan menolak User ID yang sudah dipakai. |
 | **Daftar tanpa password** (v10.3) | Pendaftar mandiri harus membuat password + konfirmasi (menyulitkan alumni lansia) dan login dengan NIM, berbeda dari alumni lain. | Isian password diganti **Tanggal Lahir** (tanggal, bulan, tahun). User ID = password = tahun angkatan + tanggal lahir 12 digit (mis. `200419121995`), sama seperti alumni lain; kodenya tampil saat mengisi dan di layar sukses. NPM/NIM tetap diisi dan disimpan di `users.nim` (pencocokan DPT, satu NIM satu akun, tampil di detail pemilih dan ekspor). Biodata, DPT, NIM, dan kode diperiksa **sebelum** pemindaian wajah; bila angkatan + tanggal lahir yang sama sudah punya akun, pendaftar diarahkan login dengan kode itu. |
 | **T4** Pembatasan percobaan login (v10.2) | Login pemilih, login admin, dan kode pendaftaran dapat dicoba tanpa batas. | **Per akun:** 5 kali salah password = akun dikunci 15 menit (pemilih dan admin). **Per jaringan** (alamat IP disimpan sebagai HMAC, bukan IP mentah): login pemilih 40, login admin 10, kode pendaftaran 10 kali gagal per 15 menit. Penguncian tercatat di Peringatan Keamanan (`login.akun_dikunci`, `*.jaringan_dibatasi`). Admin yang mengubah akun di Kelola Akun sekaligus membuka kunci login akun itu. |
 | **K6** DPT terverifikasi (v10.1) | Pendaftaran mandiri menerima NIM apa pun dan satu wajah dapat mendaftarkan banyak akun. | **Wajah ganda:** wajah baru dibandingkan dengan seluruh wajah terdaftar saat pendaftaran dan aktivasi; bila sama mirip dengan akun lain, proses ditahan dan tercatat. **DPT resmi:** setelah panitia mengunggah daftar alumni (menu Import), pendaftaran mandiri hanya diterima untuk NIM di daftar dengan nama yang sesuai (gelar dan huruf besar/kecil diabaikan). |
@@ -72,8 +76,8 @@ Skrip migrasi:
 
 **B. Instalasi baru tanpa data v9**
 
-Buka `database/data-awal.sql`, ganti `admin_password` (minimal 12 karakter), lalu jalankan di SQL
-Editor setelah `neon-manual.sql`.
+Buka `database/data-awal.sql`, ganti `admin_user_id` dan `admin_password` (minimal 12 karakter, tidak
+memuat User ID), lalu jalankan di SQL Editor setelah `neon-manual.sql`.
 
 ### 2.4 Upgrade database v10.0 ke v10.1 (K5 & K6)
 
@@ -188,9 +192,17 @@ yang sama dengan `.env.local` (tanpa variabel `V9_*`).
 | 27 | Daftar dengan tanggal yang tidak ada (31 Februari) / angkatan sebelum tahun lahir | Ditolak di langkah biodata, sebelum pemindaian wajah. |
 | 28 | Daftar dengan angkatan + tanggal lahir yang sudah dimiliki akun lain | Ditolak (409) sebelum pemindaian wajah; diarahkan login dengan kode tersebut atau menghubungi panitia. |
 | 29 | Daftar dengan NIM yang sudah terdaftar | Ditolak (409). |
+| 30 | Ekspor Excel | Tanpa kolom template wajah; lembar Petunjuk menyebut dokumen rahasia & UU PDP. |
+| 31 | Impor file ekspor lama yang masih berisi kolom template wajah | Biodata terimpor, template wajah **tidak** ikut. |
+| 32 | Reset wajah seorang pemilih | Template terhapus dari database (bukan hanya dicabut). |
+| 33 | Hapus Semua Data Wajah sebelum pemilu ditutup / konfirmasi salah | Ditolak (409 / 400). Setelah ditutup + konfirmasi benar: seluruh template terhapus dan tercatat. |
+| 34 | Impor ulang file lama berisi akun yang sudah ada dan User ID admin | Password akun lama tetap; akun admin tidak berubah (dilewati); akun baru memakai password = User ID. |
+| 35 | Tambah/ubah admin dengan password < 12 karakter atau memuat User ID | Ditolak (400). |
+| 36 | Login admin dengan password lemah | Diminta membuat password baru (409); sesi baru dibuat setelah password baru tersimpan. |
 
 Hasil uji otomatis terhadap aplikasi berjalan (database uji terpisah): K1–K3 57/57, K5/K6 32/32,
-T1 53/53, login kode alumni + T4 41/41, pendaftaran tanpa password (v10.3) 21/21 lulus. Uji login lewat HTTP pada salinan data asli: 715/715
+T1 53/53, login kode alumni + T4 41/41, pendaftaran tanpa password (v10.3) 21/21, prioritas tinggi
+T2/T3/T5/T6 (v10.4) 46/46 lulus. Uji login lewat HTTP pada salinan data asli: 715/715
 akun alumni masuk dengan kode lama, dan 773/773 ketikan 12 digit masuk ke akun yang tanggalnya sesuai
 (0 salah akun). Gladi migrasi v10.2 → ulang → rollback → migrasi pada salinan data asli: data lama
 identik di setiap langkah. Gladi migrasi v10.3 dengan cara yang sama: data lama identik, 4 akun
@@ -231,3 +243,7 @@ pendaftaran mandiri lama mendapat NIM.
    Vercel. Bila dipasang di server lain tanpa proxy tepercaya, header ini dapat dipalsukan. Banyak
    alumni di satu Wi-Fi acara berbagi satu alamat IP, sehingga batas login pemilih dibuat longgar
    (40 gagal per 15 menit).
+9. Ekspor Excel masih memuat data kontak (email, WhatsApp, domisili) karena dibutuhkan panitia;
+   perlindungannya berupa akses khusus admin, pencatatan `pemilih.ekspor` di Log Audit, dan penanda
+   dokumen rahasia. Template wajah tetap terenkripsi tanpa pengikat ke akun (AAD); pemindahan
+   template antarakun kini hanya mungkin bagi pengelola database, bukan lewat aplikasi.
