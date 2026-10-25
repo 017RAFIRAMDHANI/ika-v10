@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { castVote } from "@/lib/db";
+import { getElectionState } from "@/lib/election-guard";
 import { getSessionUser } from "@/lib/session";
 import { isSameOrigin, jsonError } from "@/lib/security";
 
@@ -10,6 +11,10 @@ export async function POST(request: Request) {
   const user = await getSessionUser();
   if (!user) return jsonError("Silakan login terlebih dahulu.", 401);
   if (user.role !== "Alumni") return jsonError("Akun administrator tidak memiliki hak suara.", 403);
+  const { phase } = await getElectionState();
+  if (phase !== "pemungutan") {
+    return jsonError(phase === "persiapan" ? "Pemungutan suara belum dibuka. Lihat jadwal di beranda." : "Pemungutan suara telah ditutup.", 403);
+  }
 
   if (user.hasVoted) return jsonError("Akun ini sudah melakukan pemilihan.", 409);
   if (!user.faceVerified) return jsonError("Verifikasi wajah wajib diselesaikan sebelum memilih.", 403);

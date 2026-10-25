@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless";
+import type { ElectionSettings } from "@/lib/election";
 import type { FaceDescriptorEngine, FaceDeviceClass, FaceTemplateRole } from "@/lib/face-types";
 import type {
   AdminStats,
@@ -38,7 +39,8 @@ function getSql() {
   return neon(databaseUrl);
 }
 
-export async function findUserByLogin(userId: string) {
+// Beberapa User ID sekaligus: login menerima penulisan kode yang setara (lihat lib/login-code.ts).
+export async function findUsersByLogin(userIds: string[]) {
   const sql = getSql();
   const rows = await sql`
     SELECT
@@ -48,6 +50,8 @@ export async function findUserByLogin(userId: string) {
       display_name AS "displayName",
       role,
       has_voted AS "hasVoted",
+      login_failed_attempts AS "loginFailedAttempts",
+      CASE WHEN login_locked_until > NOW() THEN to_json(login_locked_until) #>> '{}' END AS "loginLockedUntil",
       EXISTS (
         SELECT 1 FROM user_face_templates ft
         WHERE ft.user_id = users.id AND ft.revoked_at IS NULL
@@ -66,25 +70,26 @@ export async function findUserByLogin(userId: string) {
       ) AS "canonicalEnrolled",
       face_verified_at IS NOT NULL AS "faceVerified"
     FROM users
-    WHERE user_id = ${userId}
-    LIMIT 1
+    WHERE user_id = ANY(${userIds}::text[])
   `;
-  return (rows[0] ?? null) as
-    | {
-        id: number;
-        userId: string;
-        passwordHash: string;
-        displayName: string;
-        role: "Alumni" | "Admin";
-        hasVoted: boolean;
-        faceEnrolled: boolean;
-        faceVerified: boolean;
-        desktopPrimaryEnrolled: boolean;
-        mobilePrimaryEnrolled: boolean;
-        canonicalEnrolled: boolean;
-      }
-    | null;
+  return rows as LoginAccount[];
 }
+
+export type LoginAccount = {
+  id: number;
+  userId: string;
+  passwordHash: string;
+  displayName: string;
+  role: "Alumni" | "Admin";
+  hasVoted: boolean;
+  loginFailedAttempts: number;
+  loginLockedUntil: string | null;
+  faceEnrolled: boolean;
+  faceVerified: boolean;
+  desktopPrimaryEnrolled: boolean;
+  mobilePrimaryEnrolled: boolean;
+  canonicalEnrolled: boolean;
+};
 
 export async function findSessionUser(id: number) {
   const sql = getSql();
@@ -176,6 +181,14 @@ export async function castVote(userId: number, candidateId: number, faceVerified
         AND has_voted = FALSE
         AND ${faceVerified} = TRUE
         AND EXISTS (SELECT 1 FROM candidate_exists)
+        -- T1: suara hanya diterima selama pemungutan suara berlangsung (jam database).
+        AND EXISTS (
+          SELECT 1 FROM pengaturan_pemilu p
+          WHERE p.id = 1
+            AND p.ditutup_manual_pada IS NULL
+            AND p.dibuka_pada <= NOW()
+            AND (p.ditutup_pada IS NULL OR p.ditutup_pada > NOW())
+        )
       RETURNING id
     ), new_ballot AS (
       INSERT INTO ballots (candidate_id)
@@ -755,6 +768,8 @@ export async function updateAdminUser(
         display_name = ${data.displayName},
         role = ${data.role},
         password_hash = COALESCE(${data.passwordHash}, password_hash),
+        login_failed_attempts = 0,
+        login_locked_until = NULL,
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING id, user_id, display_name, role
@@ -1050,4 +1065,202 @@ export async function replaceOfficialDpt(entries: Array<{ nim: string; nama: str
     `
   ]);
   return entries.length;
+}
+
+// ---------- T1: jadwal & status pemilu
+
+const EMPTY_ELECTION: ElectionSettings = {
+  opensAt: null,
+  closesAt: null,
+  closedManuallyAt: null,
+  registrationDuringVoting: false,
+  liveResultsDuringVoting: false
+};
+
+// Jam database ikut dikembalikan: tahap dihitung dengan jam yang sama dengan trigger dan castVote,
+// sehingga selisih jam server aplikasi tidak membuat "Buka Sekarang" terlambat terbaca.
+export async function getElectionSettings(): Promise<{ settings: ElectionSettings; now: number }> {
+  const sql = getSql();
+  const rows = await sql`
+    SELECT
+      to_json(p.dibuka_pada) #>> '{}' AS "opensAt",
+      to_json(p.ditutup_pada) #>> '{}' AS "closesAt",
+      to_json(p.ditutup_manual_pada) #>> '{}' AS "closedManuallyAt",
+      p.pendaftaran_saat_voting AS "registrationDuringVoting",
+      p.hasil_live_saat_voting AS "liveResultsDuringVoting",
+      (extract(epoch FROM NOW()) * 1000)::float8 AS "dbNow"
+    FROM (SELECT 1) AS jam
+    LEFT JOIN pengaturan_pemilu p ON p.id = 1
+  `;
+  // Tanpa baris pengaturan (LEFT JOIN kosong) semua kolom NULL = jadwal kosong (Persiapan).
+  const { dbNow, ...row } = rows[0] as ElectionSettings & { dbNow: number };
+  const settings: ElectionSettings = {
+    ...EMPTY_ELECTION,
+    ...row,
+    registrationDuringVoting: row.registrationDuringVoting ?? false,
+    liveResultsDuringVoting: row.liveResultsDuringVoting ?? false
+  };
+  return { settings, now: Number(dbNow) };
+}
+
+// Aturan perubahan (final setelah ditutup, hanya waktu tutup selama pemungutan) juga dijaga trigger.
+export async function saveElectionSchedule(
+  // opensAt "tetap": kolom dibuka_pada tidak ditulis (dipakai selama pemungutan suara).
+  data: { opensAt: Date | null | "tetap"; closesAt: Date | null; registrationDuringVoting: boolean; liveResultsDuringVoting: boolean },
+  actor: AuditActor
+) {
+  const sql = getSql();
+  const rows = await sql`
+    WITH previous AS (
+      SELECT dibuka_pada, ditutup_pada FROM pengaturan_pemilu WHERE id = 1
+    ), updated AS (
+      UPDATE pengaturan_pemilu
+      SET
+        dibuka_pada = CASE WHEN ${data.opensAt === "tetap"}::boolean THEN dibuka_pada
+          ELSE ${data.opensAt === "tetap" ? null : data.opensAt?.toISOString() ?? null}::timestamptz END,
+        ditutup_pada = ${data.closesAt?.toISOString() ?? null}::timestamptz,
+        pendaftaran_saat_voting = ${data.registrationDuringVoting}::boolean,
+        hasil_live_saat_voting = ${data.liveResultsDuringVoting}::boolean
+      WHERE id = 1
+      RETURNING dibuka_pada, ditutup_pada, pendaftaran_saat_voting, hasil_live_saat_voting
+    ), logged AS (
+      INSERT INTO admin_audit_log (actor_id, actor_user_id, actor_name, action, target_type, target_label, details)
+      SELECT ${actor.id}, ${actor.userId}, ${actor.displayName}, 'pemilu.jadwal', 'pemilu', 'Jadwal pemilu',
+        jsonb_strip_nulls(jsonb_build_object(
+          'dibuka', to_char(u.dibuka_pada AT TIME ZONE 'Asia/Jakarta', 'DD-MM-YYYY HH24:MI') || ' WIB',
+          'ditutup', to_char(u.ditutup_pada AT TIME ZONE 'Asia/Jakarta', 'DD-MM-YYYY HH24:MI') || ' WIB',
+          'ditutupSebelum', to_char(p.ditutup_pada AT TIME ZONE 'Asia/Jakarta', 'DD-MM-YYYY HH24:MI') || ' WIB',
+          'pendaftaranSaatVoting', u.pendaftaran_saat_voting,
+          'hasilLiveSaatVoting', u.hasil_live_saat_voting
+        ))
+      FROM updated u
+      CROSS JOIN previous p
+      RETURNING id
+    )
+    SELECT 1 AS ok FROM updated
+  `;
+  return rows.length === 1;
+}
+
+export async function openElectionNow(actor: AuditActor) {
+  const sql = getSql();
+  const rows = await sql`
+    WITH updated AS (
+      UPDATE pengaturan_pemilu
+      SET dibuka_pada = NOW()
+      WHERE id = 1
+        AND ditutup_manual_pada IS NULL
+        AND (dibuka_pada IS NULL OR dibuka_pada > NOW())
+      RETURNING id
+    ), logged AS (
+      INSERT INTO admin_audit_log (actor_id, actor_user_id, actor_name, action, target_type, target_label, details)
+      SELECT ${actor.id}, ${actor.userId}, ${actor.displayName}, 'pemilu.buka', 'pemilu', 'Pemungutan suara', '{}'::jsonb
+      FROM updated
+      RETURNING id
+    )
+    SELECT id FROM updated
+  `;
+  return rows.length === 1;
+}
+
+// Penutupan manual bersifat final.
+export async function closeElectionNow(actor: AuditActor) {
+  const sql = getSql();
+  const rows = await sql`
+    WITH updated AS (
+      UPDATE pengaturan_pemilu
+      SET ditutup_manual_pada = NOW()
+      WHERE id = 1
+        AND ditutup_manual_pada IS NULL
+        AND dibuka_pada <= NOW()
+        AND (ditutup_pada IS NULL OR ditutup_pada > NOW())
+      RETURNING id
+    ), logged AS (
+      INSERT INTO admin_audit_log (actor_id, actor_user_id, actor_name, action, target_type, target_label, details)
+      SELECT ${actor.id}, ${actor.userId}, ${actor.displayName}, 'pemilu.tutup', 'pemilu', 'Pemungutan suara',
+        jsonb_build_object('suratSuara', (SELECT COUNT(*) FROM ballots))
+      FROM updated
+      RETURNING id
+    )
+    SELECT id FROM updated
+  `;
+  return rows.length === 1;
+}
+
+// ---------- T4: pembatasan percobaan login
+
+// Gagal login per akun (atomik). Pada batas maksimum akun dikunci sementara dan dicatat di
+// security_events. Mengembalikan waktu kunci bila akun baru saja dikunci.
+export async function recordAccountLoginFailure(userId: number, maxAttempts: number, lockMinutes: number) {
+  const sql = getSql();
+  const rows = await sql`
+    WITH updated AS (
+      UPDATE users
+      SET
+        login_failed_attempts = CASE WHEN login_failed_attempts + 1 >= ${maxAttempts}::int THEN 0 ELSE login_failed_attempts + 1 END,
+        login_locked_until = CASE
+          WHEN login_failed_attempts + 1 >= ${maxAttempts}::int THEN NOW() + make_interval(mins => ${lockMinutes}::int)
+          ELSE login_locked_until
+        END
+      WHERE id = ${userId}
+      RETURNING id, user_id, display_name, login_locked_until
+    ), logged AS (
+      INSERT INTO security_events (event, user_id, user_label, details)
+      SELECT 'login.akun_dikunci', id, user_id || ' - ' || display_name,
+        jsonb_build_object('percobaanGagal', ${maxAttempts}::int, 'menit', ${lockMinutes}::int)
+      FROM updated
+      WHERE login_locked_until > NOW()
+      RETURNING id
+    )
+    SELECT CASE WHEN login_locked_until > NOW() THEN to_json(login_locked_until) #>> '{}' END AS "lockedUntil" FROM updated
+  `;
+  return (rows[0]?.lockedUntil as string | null | undefined) ?? null;
+}
+
+export async function clearAccountLoginFailures(userId: number) {
+  const sql = getSql();
+  await sql`
+    UPDATE users
+    SET login_failed_attempts = 0, login_locked_until = NULL
+    WHERE id = ${userId}
+  `;
+}
+
+// Gagal per jaringan (kunci = HMAC alamat IP, bukan IP mentah) dalam satu jendela waktu.
+export async function getLoginThrottle(key: string, windowMinutes: number) {
+  const sql = getSql();
+  const rows = await sql`
+    SELECT failures, to_json(window_start + make_interval(mins => ${windowMinutes}::int)) #>> '{}' AS "resetsAt"
+    FROM login_throttle
+    WHERE key = ${key} AND window_start > NOW() - make_interval(mins => ${windowMinutes}::int)
+  `;
+  return (rows[0] ?? null) as { failures: number; resetsAt: string } | null;
+}
+
+export async function recordLoginThrottleFailure(key: string, scope: string, limit: number, windowMinutes: number) {
+  const sql = getSql();
+  await sql.transaction([
+    sql`DELETE FROM login_throttle WHERE window_start < NOW() - interval '1 day'`,
+    sql`
+      WITH counted AS (
+        INSERT INTO login_throttle (key, failures, window_start)
+        VALUES (${key}, 1, NOW())
+        ON CONFLICT (key) DO UPDATE SET
+          failures = CASE
+            WHEN login_throttle.window_start <= NOW() - make_interval(mins => ${windowMinutes}::int) THEN 1
+            ELSE login_throttle.failures + 1
+          END,
+          window_start = CASE
+            WHEN login_throttle.window_start <= NOW() - make_interval(mins => ${windowMinutes}::int) THEN NOW()
+            ELSE login_throttle.window_start
+          END
+        RETURNING failures
+      )
+      INSERT INTO security_events (event, user_label, details)
+      SELECT ${`${scope}.jaringan_dibatasi`}, ${`Jaringan ${key.slice(-8)}`},
+        jsonb_build_object('percobaanGagal', failures, 'menit', ${windowMinutes}::int)
+      FROM counted
+      WHERE failures = ${limit}::int
+    `
+  ]);
 }

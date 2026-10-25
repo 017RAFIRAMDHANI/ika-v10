@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getElectionState } from "@/lib/election-guard";
 import { getFaceLock, getFaceVerificationRecord, markFaceVerified, recordFaceFailure } from "@/lib/db";
 import {
   decryptFaceDescriptor,
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
     const session = await getSessionUser();
     if (!session) return jsonError("Silakan login terlebih dahulu.", 401);
     if (session.role !== "Alumni") return jsonError("Verifikasi wajah hanya untuk akun pemilih.", 403);
+    if ((await getElectionState()).phase === "ditutup") return jsonError("Pemungutan suara telah ditutup.", 409);
     if (session.faceVerified) return Response.json({ ok: true, redirectTo: "/pemilihan" });
     const lockedUntil = await getFaceLock(session.id);
     if (lockedUntil) return jsonError(faceLockMessage(lockedUntil), 429);

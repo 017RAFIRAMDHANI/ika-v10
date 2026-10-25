@@ -17,12 +17,19 @@ const actionLabels: Record<string, string> = {
   "pemilih.impor": "Impor data pemilih",
   "pemilih.ekspor": "Ekspor data pemilih",
   "dpt.impor": "Unggah DPT resmi",
+  "pemilu.jadwal": "Ubah jadwal pemilu",
+  "pemilu.buka": "Buka pemungutan suara",
+  "pemilu.tutup": "Tutup pemungutan suara",
   "sistem.migrasi_v9": "Migrasi data dari v9"
 };
 
 const eventLabels: Record<string, string> = {
   "wajah.dikunci": "Verifikasi wajah dikunci (gagal berulang)",
-  "wajah.ganda": "Wajah mirip akun lain (ditahan)"
+  "wajah.ganda": "Wajah mirip akun lain (ditahan)",
+  "login.akun_dikunci": "Login akun dikunci (salah password berulang)",
+  "login.jaringan_dibatasi": "Login pemilih dibatasi dari satu jaringan",
+  "admin_login.jaringan_dibatasi": "Login admin dibatasi dari satu jaringan",
+  "pendaftaran.jaringan_dibatasi": "Kode pendaftaran salah berulang dari satu jaringan"
 };
 
 function formatDate(value: string) {
@@ -93,7 +100,7 @@ export default async function AuditLogPage() {
         <div className="toolbar">
           <div>
             <strong style={{ color: "var(--app-900)", fontSize: ".85rem" }}>Peringatan Keamanan</strong>
-            <div className="muted" style={{ fontSize: ".66rem", marginTop: 4 }}>Akun yang verifikasi wajahnya dikunci dan pendaftaran yang ditahan karena wajah mirip akun lain. Tinjau dan tindak lanjuti oleh panitia.</div>
+            <div className="muted" style={{ fontSize: ".66rem", marginTop: 4 }}>Verifikasi wajah atau login yang dikunci karena gagal berulang, percobaan berulang dari satu jaringan, dan pendaftaran yang ditahan karena wajah mirip akun lain. Tinjau dan tindak lanjuti oleh panitia.</div>
           </div>
         </div>
         <div className="data-table-wrap">

@@ -38,11 +38,11 @@ export default function LoginForm() {
     <form onSubmit={submit} className="auth-form">
       <div className="auth-field">
         <label htmlFor="userId">User ID</label>
-        <div className="auth-input-wrap"><i className="bx bx-user" /><input type="text" id="userId" className="app-input" name="userId" required autoFocus autoComplete="username" placeholder="Masukkan User ID" /></div>
+        <div className="auth-input-wrap"><i className="bx bx-user" /><input type="text" id="userId" className="app-input" name="userId" required autoFocus autoComplete="username" placeholder="Contoh: 200419121995" /></div>
       </div>
       <div className="auth-field">
         <label htmlFor="password">Kata Sandi</label>
-        <div className="auth-input-wrap"><i className="bx bx-lock-alt" /><input type="password" id="password" className="app-input" name="password" required autoComplete="current-password" placeholder="Masukkan password" /></div>
+        <div className="auth-input-wrap"><i className="bx bx-lock-alt" /><input type="password" id="password" className="app-input" name="password" required autoComplete="current-password" placeholder="Sama dengan User ID, kecuali sudah diganti" /></div>
       </div>
       {error && <div className="alert alert-danger" role="alert">{error}</div>}
       <LoadingButton busy={busy} className="app-btn app-btn-primary" type="submit">Masuk sebagai Pemilih <i className="bx bx-right-arrow-alt" /></LoadingButton>

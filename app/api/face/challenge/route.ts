@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { createFaceChallenge, faceLockMessage } from "@/lib/face";
+import { getElectionState } from "@/lib/election-guard";
+import { registrationClosedMessage, registrationOpen } from "@/lib/election";
 import { getFaceLock, getFaceTemplateAvailability, getFaceVerificationRecord } from "@/lib/db";
 import {
   FACE_ARCFACE_MODEL_VERSION,
@@ -53,6 +55,12 @@ export async function GET(request: Request) {
     if (profile.data.templateRole === "canonical-cross-device" && process.env.FACE_CROSS_DEVICE_ENABLED === "false") {
       return jsonError("Verifikasi lintas perangkat sedang dinonaktifkan.", 503);
     }
+
+    const election = await getElectionState();
+    if (mode.data === "register" && !registrationOpen(election.settings, election.phase)) {
+      return jsonError(registrationClosedMessage(election.phase), 409);
+    }
+    if (election.phase === "ditutup") return jsonError("Pemungutan suara telah ditutup.", 409);
 
     const session = await getSessionUser();
     if (mode.data !== "register" && !session) {

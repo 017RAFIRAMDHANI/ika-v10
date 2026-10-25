@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createCandidate } from "@/lib/db";
+import { electionLockMessage } from "@/lib/election-guard";
 import { imageFileToDataUrl } from "@/lib/media";
 import { auditActor, getSessionUser, isAdmin } from "@/lib/session";
 import { isSameOrigin, jsonError } from "@/lib/security";
@@ -17,6 +18,8 @@ export async function POST(request: Request) {
   if (!isSameOrigin(request)) return jsonError("Permintaan tidak valid.", 403);
   const user = await getSessionUser();
   if (!user || !isAdmin(user)) return jsonError("Akses ditolak.", 403);
+  const locked = await electionLockMessage(["pemungutan", "ditutup"]);
+  if (locked) return jsonError(locked, 409);
 
   const formData = await request.formData();
   const parsed = fieldsSchema.safeParse({

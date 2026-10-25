@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { deleteCandidate, updateCandidate } from "@/lib/db";
+import { electionLockMessage } from "@/lib/election-guard";
 import { imageFileToDataUrl } from "@/lib/media";
 import { auditActor, getSessionUser, isAdmin } from "@/lib/session";
 import { isSameOrigin, jsonError } from "@/lib/security";
@@ -22,6 +23,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!isSameOrigin(request)) return jsonError("Permintaan tidak valid.", 403);
   const user = await getSessionUser();
   if (!user || !isAdmin(user)) return jsonError("Akses ditolak.", 403);
+  const locked = await electionLockMessage(["pemungutan", "ditutup"]);
+  if (locked) return jsonError(locked, 409);
   const id = idFrom((await params).id);
   if (!id) return jsonError("ID kandidat tidak valid.");
   const formData = await request.formData();
@@ -47,6 +50,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!isSameOrigin(request)) return jsonError("Permintaan tidak valid.", 403);
   const user = await getSessionUser();
   if (!user || !isAdmin(user)) return jsonError("Akses ditolak.", 403);
+  const locked = await electionLockMessage(["pemungutan", "ditutup"]);
+  if (locked) return jsonError(locked, 409);
   const id = idFrom((await params).id);
   if (!id) return jsonError("ID kandidat tidak valid.");
   const deleted = await deleteCandidate(id, auditActor(user));

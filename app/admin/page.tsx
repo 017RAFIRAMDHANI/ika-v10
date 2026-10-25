@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import ElectionControl from "@/components/ElectionControl";
 import { getAdminStats, getCandidates } from "@/lib/db";
+import { getElectionState } from "@/lib/election-guard";
 import { getSessionUser, isAdmin } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminDashboardPage() {
   const user = await getSessionUser();
   if (!user || !isAdmin(user)) redirect("/admin/login");
-  const [stats, candidates] = await Promise.all([getAdminStats(), getCandidates()]);
+  const [stats, candidates, election] = await Promise.all([getAdminStats(), getCandidates(), getElectionState()]);
   const unvoted = Math.max(stats.voters - stats.voted, 0);
   const total = candidates.reduce((sum, item) => sum + item.votes, 0);
 
@@ -18,6 +20,8 @@ export default async function AdminDashboardPage() {
       <div className="page-heading">
         <div><span className="eyebrow">Ringkasan Sistem</span><h1>Dashboard Administrator</h1><p>Pantau partisipasi, kandidat, akun, dan perolehan suara dari satu panel.</p></div>
       </div>
+
+      <ElectionControl key={JSON.stringify(election.settings)} settings={election.settings} phase={election.phase} />
 
       <section className="stats-grid">
         <Link href="/datapemilih" className="stat-card primary"><i className="bx bx-group stat-icon" /><p>Total DPT</p><strong>{stats.voters}</strong></Link>

@@ -11,6 +11,8 @@
 --   K3  Hanya akun role Alumni yang dapat memilih (ditegakkan di aplikasi dan di castVote).
 --   K5  Verifikasi wajah dikunci sementara setelah beberapa kali gagal (users.face_*).
 --   K6  security_events (wajah dikunci / wajah ganda) dan dpt_resmi (daftar alumni resmi).
+--   T1  pengaturan_pemilu: jadwal & status pemilu (persiapan -> pemungutan suara -> ditutup).
+--   T4  Pembatasan percobaan login: users.login_* (kunci per akun) dan login_throttle (per jaringan).
 -- ================================================================
 
 BEGIN;
@@ -51,6 +53,9 @@ CREATE TABLE IF NOT EXISTS users (
   face_failed_attempts INTEGER NOT NULL DEFAULT 0
     CONSTRAINT chk_users_face_failed_attempts CHECK (face_failed_attempts >= 0),
   face_locked_until TIMESTAMPTZ,
+  login_failed_attempts INTEGER NOT NULL DEFAULT 0
+    CONSTRAINT chk_users_login_failed_attempts CHECK (login_failed_attempts >= 0),
+  login_locked_until TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -119,6 +124,32 @@ CREATE TABLE IF NOT EXISTS dpt_resmi (
   imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- T1: jadwal pemilu.
+-- Satu baris pengaturan (id = 1).
+--   dibuka_pada / ditutup_pada : jadwal pemungutan suara (ditutup_pada kosong = sampai ditutup manual)
+--   ditutup_manual_pada        : waktu admin menekan "Tutup Sekarang" (final)
+--   pendaftaran_saat_voting    : izinkan pendaftaran mandiri selama pemungutan suara
+--   hasil_live_saat_voting     : tampilkan perolehan per kandidat kepada pemilih selama pemungutan suara
+CREATE TABLE IF NOT EXISTS pengaturan_pemilu (
+  id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  dibuka_pada TIMESTAMPTZ,
+  ditutup_pada TIMESTAMPTZ,
+  ditutup_manual_pada TIMESTAMPTZ,
+  pendaftaran_saat_voting BOOLEAN NOT NULL DEFAULT FALSE,
+  hasil_live_saat_voting BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_pengaturan_pemilu_jadwal
+    CHECK (ditutup_pada IS NULL OR (dibuka_pada IS NOT NULL AND ditutup_pada > dibuka_pada))
+);
+INSERT INTO pengaturan_pemilu (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- T4: gagal login per jaringan dalam jendela waktu. Kunci = HMAC alamat IP (IP mentah tidak disimpan).
+CREATE TABLE IF NOT EXISTS login_throttle (
+  key VARCHAR(128) PRIMARY KEY,
+  failures INTEGER NOT NULL DEFAULT 0,
+  window_start TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_candidates_name ON candidates(name);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email_ci
   ON users (LOWER(email)) WHERE email IS NOT NULL;
@@ -165,11 +196,48 @@ CREATE TRIGGER trg_security_events_no_truncate
   BEFORE TRUNCATE ON security_events
   FOR EACH STATEMENT EXECUTE FUNCTION ika_tolak_perubahan();
 
+-- Aturan perubahan ditegakkan di database:
+--   - setelah ditutup (manual atau jadwal lewat) tidak ada yang dapat diubah;
+--   - setelah dibuka, hanya waktu tutup (ke masa depan) dan penutupan manual yang diizinkan.
+CREATE OR REPLACE FUNCTION ika_jaga_pengaturan_pemilu() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.ditutup_manual_pada IS NOT NULL OR (OLD.ditutup_pada IS NOT NULL AND OLD.ditutup_pada <= NOW()) THEN
+    RAISE EXCEPTION 'Pemungutan suara telah ditutup; pengaturan pemilu tidak dapat diubah.';
+  END IF;
+  IF OLD.dibuka_pada IS NOT NULL AND OLD.dibuka_pada <= NOW() THEN
+    IF NEW.dibuka_pada IS DISTINCT FROM OLD.dibuka_pada
+      OR NEW.pendaftaran_saat_voting IS DISTINCT FROM OLD.pendaftaran_saat_voting
+      OR NEW.hasil_live_saat_voting IS DISTINCT FROM OLD.hasil_live_saat_voting THEN
+      RAISE EXCEPTION 'Selama pemungutan suara hanya waktu tutup yang dapat diubah.';
+    END IF;
+    IF NEW.ditutup_manual_pada IS NULL AND NEW.ditutup_pada IS NOT NULL AND NEW.ditutup_pada <= NOW() THEN
+      RAISE EXCEPTION 'Waktu tutup harus di masa depan; gunakan Tutup Sekarang untuk menutup pemungutan suara.';
+    END IF;
+  END IF;
+  NEW.updated_at := NOW();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_pengaturan_pemilu_jaga ON pengaturan_pemilu;
+CREATE TRIGGER trg_pengaturan_pemilu_jaga
+  BEFORE UPDATE ON pengaturan_pemilu
+  FOR EACH ROW EXECUTE FUNCTION ika_jaga_pengaturan_pemilu();
+DROP TRIGGER IF EXISTS trg_pengaturan_pemilu_tetap ON pengaturan_pemilu;
+CREATE TRIGGER trg_pengaturan_pemilu_tetap
+  BEFORE DELETE ON pengaturan_pemilu
+  FOR EACH ROW EXECUTE FUNCTION ika_tolak_perubahan();
+DROP TRIGGER IF EXISTS trg_pengaturan_pemilu_no_truncate ON pengaturan_pemilu;
+CREATE TRIGGER trg_pengaturan_pemilu_no_truncate
+  BEFORE TRUNCATE ON pengaturan_pemilu
+  FOR EACH STATEMENT EXECUTE FUNCTION ika_tolak_perubahan();
+
 COMMIT;
 
--- Verifikasi: harus menampilkan 7 tabel.
+-- Verifikasi: harus menampilkan 9 tabel.
 SELECT table_name
 FROM information_schema.tables
 WHERE table_schema = 'public'
-  AND table_name IN ('candidates', 'users', 'user_face_templates', 'ballots', 'admin_audit_log', 'security_events', 'dpt_resmi')
+  AND table_name IN ('candidates', 'users', 'user_face_templates', 'ballots', 'admin_audit_log', 'security_events', 'dpt_resmi', 'pengaturan_pemilu', 'login_throttle')
 ORDER BY table_name;

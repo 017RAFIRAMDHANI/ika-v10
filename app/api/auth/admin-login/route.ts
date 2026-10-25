@@ -1,7 +1,14 @@
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { verifyPassword } from "@/lib/auth";
-import { findUserByLogin, logAdminAction, upgradeLegacyPassword } from "@/lib/db";
+import { findUsersByLogin, logAdminAction, upgradeLegacyPassword } from "@/lib/db";
+import {
+  accountLockedMessage,
+  clearAccountFailures,
+  networkBlockedMessage,
+  recordAccountFailure,
+  recordNetworkFailure
+} from "@/lib/login-throttle";
 import { createSession, isAdmin } from "@/lib/session";
 import { isSameOrigin, jsonError } from "@/lib/security";
 
@@ -17,11 +24,24 @@ export async function POST(request: Request) {
     const parsed = loginSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return jsonError(parsed.error.issues[0]?.message ?? "Data login tidak valid.");
 
-    const user = await findUserByLogin(parsed.data.userId);
-    if (!user) return jsonError("User ID atau password administrator salah.", 401);
+    const blocked = await networkBlockedMessage(request, "admin_login");
+    if (blocked) return jsonError(blocked, 429);
+
+    const [user] = await findUsersByLogin([parsed.data.userId]);
+    if (!user) {
+      await recordNetworkFailure(request, "admin_login");
+      return jsonError("User ID atau password administrator salah.", 401);
+    }
+    if (user.loginLockedUntil) return jsonError(accountLockedMessage(user.loginLockedUntil), 429);
 
     const password = await verifyPassword(parsed.data.password, user.passwordHash);
-    if (!password.valid) return jsonError("User ID atau password administrator salah.", 401);
+    if (!password.valid) {
+      await recordNetworkFailure(request, "admin_login");
+      const lockedUntil = await recordAccountFailure(user.id);
+      if (lockedUntil) return jsonError(accountLockedMessage(lockedUntil), 429);
+      return jsonError("User ID atau password administrator salah.", 401);
+    }
+    await clearAccountFailures(user);
     if (!isAdmin(user)) return jsonError("Akun ini bukan akun administrator.", 403);
 
     if (password.needsUpgrade) {

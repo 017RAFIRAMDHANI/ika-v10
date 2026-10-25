@@ -32,7 +32,11 @@ export default async function LoginPage() {
           <p>Masuk untuk melanjutkan ke dashboard dan bilik suara.</p>
           <div className="auth-hint">
             <i className="bx bx-info-circle" />
-            <span>User ID dan password awal mengikuti data yang diberikan panitia. Pada data lama, password dapat sama dengan User ID.</span>
+            <span>
+              <strong>User ID dan password:</strong> tahun angkatan + tanggal lahir + bulan lahir + tahun lahir.<br />
+              Contoh: angkatan 2004, lahir 19 Desember 1995 → <strong>200419121995</strong>. Angka 0 pada tanggal/bulan boleh ditulis atau tidak (05 atau 5).<br />
+              Mendaftar mandiri: User ID = NPM/NIM, password sesuai saat mendaftar.
+            </span>
           </div>
           <LoginForm />
           <Link href="/daftar" className="auth-register-link"><i className="bx bx-user-plus" /> Belum masuk DPT? Daftar tanpa login</Link>

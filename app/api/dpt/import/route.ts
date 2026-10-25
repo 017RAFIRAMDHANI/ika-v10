@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { Readable } from "node:stream";
 import { replaceOfficialDpt } from "@/lib/db";
+import { electionLockMessage } from "@/lib/election-guard";
 import { auditActor, getSessionUser, isAdmin } from "@/lib/session";
 import { isSameOrigin, jsonError } from "@/lib/security";
 
@@ -30,6 +31,8 @@ export async function POST(request: Request) {
     if (!isSameOrigin(request)) return jsonError("Permintaan tidak valid.", 403);
     const session = await getSessionUser();
     if (!session || !isAdmin(session)) return jsonError("Akses ditolak.", 403);
+    const locked = await electionLockMessage(["pemungutan"]);
+    if (locked) return jsonError(locked, 409);
 
     const form = await request.formData();
     const file = form.get("file");

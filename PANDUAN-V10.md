@@ -12,10 +12,13 @@ sehingga selalu dapat dipakai kembali.
 | **K2** Jejak audit | Admin dapat mereset/menghapus suara tanpa jejak; tidak ada log. | Tabel `admin_audit_log` mencatat login admin, tambah/ubah/hapus akun, reset wajah, tambah/ubah/hapus kandidat, impor, dan ekspor — ditulis dalam statement SQL yang sama dengan aksinya. Fitur **reset hak pilih dihapus**; akun yang sudah memilih **tidak dapat dihapus** dan role-nya tidak dapat diubah. `ballots` dan `admin_audit_log` *append-only*. Menu baru **Log Audit** menampilkan riwayat dan rekonsiliasi suara. |
 | **K3** Hak suara | Larangan admin memilih hanya di tampilan; API tetap menerima suara admin. | `/api/vote`, `castVote` (SQL), dan seluruh API verifikasi wajah hanya menerima role `Alumni`. Admin tidak dapat mengubah role dirinya sendiri. |
 | **K5** Verifikasi wajah (v10.1) | Server mengirim skor kemiripan saat gagal dan percobaan tidak dibatasi, sehingga template dapat ditebak bertahap. | Skor tidak lagi dikirim (pesan hanya "tidak cocok" + sisa percobaan). Setelah **5 kali gagal**, verifikasi wajah akun itu **dikunci 15 menit** dan tercatat di Peringatan Keamanan. Berhasil atau reset wajah oleh admin membuka kunci. |
+| **T1** Jadwal pemilu (v10.2) | Pemungutan suara terbuka kapan saja; tidak ada cara membuka/menutup pemilu; hasil per kandidat tampil selama voting. | Admin mengatur jadwal di **Dashboard Admin → Status Pemilu** (waktu buka/tutup WIB, tombol *Buka Sekarang* dan *Tutup Sekarang*). Tiga tahap: **Persiapan** (aktivasi wajah, pendaftaran, kelola data; voting tertutup) → **Pemungutan Suara** (voting dibuka; kandidat, impor, kelola akun, dan reset wajah dikunci) → **Ditutup** (final, tidak dapat dibuka lagi). Dua pengaturan admin: pendaftaran mandiri saat voting (bawaan: ditutup) dan hasil per kandidat untuk pemilih saat voting (bawaan: hanya jumlah pemilih). |
+| **Login** kode alumni (v10.2) | User ID = password = tahun angkatan + tanggal lahir + bulan lahir + tahun lahir, tetapi data lama ditulis tanpa angka 0 (mis. `19991261971`) sehingga pemilih yang mengetik 12 digit lengkap ditolak; petunjuk login tidak menjelaskan formatnya. | Login menerima kode **dengan atau tanpa angka 0** (juga spasi/titik/garis miring), mis. `200405031995` = `2004531995`. Pencarian bertingkat: kode persis lebih dulu, lalu penulisan setara; akun dipilih hanya bila password-nya cocok, dan bila kode cocok dengan lebih dari satu akun login ditolak dengan permintaan menulis 12 digit lengkap. Halaman login menampilkan format dan contoh `200419121995`. |
+| **T4** Pembatasan percobaan login (v10.2) | Login pemilih, login admin, dan kode pendaftaran dapat dicoba tanpa batas. | **Per akun:** 5 kali salah password = akun dikunci 15 menit (pemilih dan admin). **Per jaringan** (alamat IP disimpan sebagai HMAC, bukan IP mentah): login pemilih 40, login admin 10, kode pendaftaran 10 kali gagal per 15 menit. Penguncian tercatat di Peringatan Keamanan (`login.akun_dikunci`, `*.jaringan_dibatasi`). Admin yang mengubah akun di Kelola Akun sekaligus membuka kunci login akun itu. |
 | **K6** DPT terverifikasi (v10.1) | Pendaftaran mandiri menerima NIM apa pun dan satu wajah dapat mendaftarkan banyak akun. | **Wajah ganda:** wajah baru dibandingkan dengan seluruh wajah terdaftar saat pendaftaran dan aktivasi; bila sama mirip dengan akun lain, proses ditahan dan tercatat. **DPT resmi:** setelah panitia mengunggah daftar alumni (menu Import), pendaftaran mandiri hanya diterima untuk NIM di daftar dengan nama yang sesuai (gelar dan huruf besar/kecil diabaikan). |
 
 Yang **tidak** berubah: model wajah (ArcFace, ambang 0.42, satu kali pindai), tampilan pemilih,
-login, dan halaman hasil. K4 (password awal akun impor = NIM) belum dikerjakan.
+dan halaman hasil. Password awal tetap sama dengan User ID (lihat Batasan no. 7).
 
 ## 2. Instalasi
 
@@ -24,7 +27,7 @@ login, dan halaman hasil. K4 (password awal akun impor = NIM) belum dikerjakan.
 1. Buka [console.neon.tech](https://console.neon.tech) → **New Project** (misalnya `ika-v10`).
 2. Salin *connection string* (format `postgresql://...?sslmode=require`).
 3. Buka **SQL Editor** project tersebut, salin seluruh isi `database/neon-manual.sql`, lalu **Run**.
-   Hasil akhir harus menampilkan 5 tabel.
+   Hasil akhir harus menampilkan 9 tabel.
 
 ### 2.2 File `.env.local`
 
@@ -85,7 +88,34 @@ menambah 2 kolom (`users.face_failed_attempts`, `users.face_locked_until`) dan 2
 (`security_events`, `dpt_resmi`); tidak ada data yang diubah. Pembatalan:
 `database/rollback-v10.1-ke-v10.0.sql`.
 
-### 2.5 DPT resmi (opsional, disarankan)
+### 2.5 Upgrade database v10.1 ke v10.2 (T1 & T4)
+
+```bash
+node --env-file=.env.local scripts/backup-v10.mjs
+```
+
+Lalu jalankan `database/migrasi-v10.2-t1-t4.sql` di Neon SQL Editor. Migrasi hanya menambah tabel
+`pengaturan_pemilu` (satu baris) beserta trigger penjaganya, 2 kolom `users.login_failed_attempts`
+/ `users.login_locked_until`, dan tabel `login_throttle`; data lain tidak berubah. Pembatalan:
+`database/rollback-v10.2-ke-v10.1.sql`.
+
+> **Penting:** setelah migrasi, status pemilu = **Persiapan** sehingga pemungutan suara **tertutup**
+> sampai admin mengatur jadwal atau menekan *Buka Sekarang*.
+
+### 2.5b Mengatur jadwal pemilu
+
+1. Buka **Dashboard Admin** → kartu **Status Pemilu**.
+2. Isi **Waktu dibuka** dan **Waktu ditutup** (WIB), atur dua pilihan pengaturan, lalu **Simpan Jadwal**.
+   Kosongkan waktu ditutup bila pemungutan suara akan ditutup manual.
+3. Saat waktu dibuka tiba, pemungutan suara terbuka otomatis (atau tekan **Buka Sekarang**).
+4. Selama pemungutan suara hanya waktu tutup yang dapat diubah (misalnya diperpanjang).
+5. Pemungutan suara tertutup otomatis saat waktu tutup tiba, atau dengan **Tutup Sekarang**.
+   **Penutupan bersifat final.**
+
+Aturan ini ditegakkan di server dan di database (trigger `ika_jaga_pengaturan_pemilu`, syarat
+jadwal di `castVote`), bukan hanya di tampilan. Setiap perubahan tercatat di Log Audit.
+
+### 2.5c DPT resmi (opsional, disarankan)
 
 Menu **Import → DPT Resmi**: unggah .xlsx/.csv dengan NIM di kolom A dan Nama di kolom B (seperti
 `databook.xlsx`), atau baris pertama berjudul `NIM` dan `Nama`. Unggahan baru **mengganti** seluruh
@@ -131,8 +161,23 @@ yang sama dengan `.env.local` (tanpa variabel `V9_*`).
 | 12 | Aktivasi/pendaftaran dengan wajah yang sudah dimiliki akun lain | Ditolak (409) "Wajah ini sangat mirip dengan akun lain"; tercatat di Peringatan Keamanan. |
 | 13 | Unggah DPT resmi, lalu daftar dengan NIM di luar daftar / nama berbeda | Ditolak (409). NIM di daftar + nama sesuai diterima. |
 | 14 | Unggah file DPT berisi baris tidak valid | Ditolak dengan nomor baris; DPT lama tetap utuh. |
+| 15 | Memilih saat Persiapan / setelah Ditutup | Ditolak (403) "belum dibuka" / "telah ditutup". |
+| 16 | Simpan jadwal dengan waktu tutup sebelum waktu buka / di masa lalu | Ditolak. |
+| 17 | Selama pemungutan: tambah/ubah/hapus kandidat, impor, kelola akun, reset wajah | Ditolak (409) "Dikunci selama pemungutan suara". |
+| 18 | Selama pemungutan: ubah waktu buka atau pengaturan | Ditolak; memperpanjang waktu tutup diizinkan. |
+| 19 | Siaran Live oleh pemilih selama pemungutan | Hanya jumlah pemilih yang sudah memilih (kecuali diizinkan admin). |
+| 20 | Tutup Sekarang lalu coba buka lagi / ubah jadwal | Ditolak; tahap Ditutup bersifat final. |
+| 21 | Login dengan kode tanpa angka 0 / dengan angka 0 / dengan spasi | Ketiganya masuk ke akun yang sama. |
+| 22 | Login dengan kode yang cocok dengan dua akun berbeda | Ditolak (409), diminta mengetik 12 digit lengkap. |
+| 23 | Salah password 5 kali pada satu akun | Akun dikunci 15 menit (429), tercatat di Peringatan Keamanan; password benar pun ditolak selama terkunci. |
+| 24 | Gagal login berulang dari satu jaringan (40 pemilih / 10 admin) | Jaringan dibatasi sampai jendela 15 menit berakhir (429). |
+| 25 | Kode pendaftaran salah 10 kali | Dibatasi (429) sampai jendela 15 menit berakhir. |
 
-Hasil uji otomatis terhadap aplikasi berjalan: K1–K3 57/57 lulus, K5/K6 32/32 lulus.
+Hasil uji otomatis terhadap aplikasi berjalan (database uji terpisah): K1–K3 57/57, K5/K6 32/32,
+T1 53/53, login kode alumni + T4 41/41 lulus. Uji login lewat HTTP pada salinan data asli: 715/715
+akun alumni masuk dengan kode lama, dan 773/773 ketikan 12 digit masuk ke akun yang tanggalnya sesuai
+(0 salah akun). Gladi migrasi v10.2 → ulang → rollback → migrasi pada salinan data asli: data lama
+identik di setiap langkah.
 
 ## 5. Batasan yang perlu dicatat di skripsi
 
@@ -141,10 +186,11 @@ Hasil uji otomatis terhadap aplikasi berjalan: K1–K3 57/57 lulus, K5/K6 32/32 
    (misalnya kolom sistem `xmin` atau urutan fisik baris). v10 melindungi kerahasiaan terhadap
    administrator **aplikasi**, bukan terhadap administrator infrastruktur. Perlindungan penuh
    membutuhkan skema kriptografis (mis. *blind signature* atau *homomorphic tally*).
-2. Admin masih dapat mereset password dan wajah seorang pemilih lalu masuk sebagai pemilih itu.
-   v10 **mencatat** setiap reset tersebut di log audit sehingga dapat dideteksi, tetapi belum
-   **mencegahnya**. Pencegahan penuh memerlukan status pemilu (dibuka/ditutup) yang mengunci
-   reset selama pemungutan suara (rekomendasi T1).
+2. Sejak v10.2 (T1), reset password dan reset wajah oleh admin **dikunci selama pemungutan
+   suara**. Pada tahap Persiapan admin masih dapat melakukannya (untuk membantu pemilih); setiap
+   reset tercatat di Log Audit sehingga dapat diperiksa sebelum voting dibuka. Waktu yang
+   dipakai untuk membuka/menutup adalah jam database (sama untuk aplikasi, trigger, dan
+   `castVote`), sehingga selisih jam server aplikasi tidak berpengaruh.
 3. Log audit hanya mencatat tindakan administrator, bukan tindakan pemilih, dan tidak pernah
    mencatat pilihan kandidat. Peringatan keamanan (wajah dikunci/ganda) dicatat terpisah.
 4. **Liveness diperiksa di perangkat pemilih (K5c).** Kedip/tengok dan skor anti-spoof dihitung di
@@ -158,3 +204,13 @@ Hasil uji otomatis terhadap aplikasi berjalan: K1–K3 57/57 lulus, K5/K6 32/32 
    dan memerlukan penanganan manual oleh panitia.
 6. Pencocokan nama DPT bersifat longgar (cukup satu kata nama sama); perlindungan utamanya adalah
    NIM yang hanya dapat diklaim sekali dan cek wajah ganda.
+7. **Password awal = User ID = angkatan + tanggal lahir.** Siapa pun yang mengetahui angkatan dan
+   tanggal lahir seorang alumni dapat login sebagai alumni itu; T4 hanya membatasi tebakan massal,
+   bukan tebakan terarah. Perlindungan hak suara bertumpu pada verifikasi wajah: wajah yang
+   didaftarkan lebih dulu yang berlaku, dan wajah ganda ditahan (K6). Kode yang secara alami ambigu
+   (mis. `20041111995` = 1 November atau 11 Januari) tetap mengikuti data lama: bila tepat sama
+   dengan User ID sebuah akun, akun itulah yang dipakai.
+8. Pembatasan per jaringan memakai alamat IP dari header `x-real-ip`/`x-forwarded-for` yang diisi
+   Vercel. Bila dipasang di server lain tanpa proxy tepercaya, header ini dapat dipalsukan. Banyak
+   alumni di satu Wi-Fi acara berbagi satu alamat IP, sehingga batas login pemilih dibuat longgar
+   (40 gagal per 15 menit).

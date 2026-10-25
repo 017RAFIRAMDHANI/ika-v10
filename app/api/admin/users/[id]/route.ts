@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { deleteAdminUser, getAdminUser, updateAdminUser } from "@/lib/db";
+import { electionLockMessage } from "@/lib/election-guard";
 import { auditActor, getSessionUser, isAdmin } from "@/lib/session";
 import { isSameOrigin, jsonError } from "@/lib/security";
 
@@ -20,6 +21,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!isSameOrigin(request)) return jsonError("Permintaan tidak valid.", 403);
   const session = await getSessionUser();
   if (!session || !isAdmin(session)) return jsonError("Akses ditolak.", 403);
+  const locked = await electionLockMessage(["pemungutan"]);
+  if (locked) return jsonError(locked, 409);
   const id = parseId((await params).id);
   if (!id) return jsonError("ID akun tidak valid.");
   const parsed = schema.safeParse(await request.json().catch(() => null));
@@ -52,6 +55,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!isSameOrigin(request)) return jsonError("Permintaan tidak valid.", 403);
   const session = await getSessionUser();
   if (!session || !isAdmin(session)) return jsonError("Akses ditolak.", 403);
+  const locked = await electionLockMessage(["pemungutan"]);
+  if (locked) return jsonError(locked, 409);
   const id = parseId((await params).id);
   if (!id) return jsonError("ID akun tidak valid.");
   if (id === session.id) return jsonError("Akun yang sedang digunakan tidak dapat dihapus.", 409);

@@ -1,0 +1,121 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
+import LoadingButton from "@/components/LoadingButton";
+import {
+  ELECTION_PHASE_LABELS,
+  formatWib,
+  toWibInput,
+  type ElectionPhase,
+  type ElectionSettings
+} from "@/lib/election";
+
+const phaseBadge: Record<ElectionPhase, string> = {
+  persiapan: "badge-info",
+  pemungutan: "badge-success",
+  ditutup: "badge-neutral"
+};
+
+export default function ElectionControl({ settings, phase }: { settings: ElectionSettings; phase: ElectionPhase }) {
+  const router = useRouter();
+  const [opensAt, setOpensAt] = useState(toWibInput(settings.opensAt));
+  const [closesAt, setClosesAt] = useState(toWibInput(settings.closesAt));
+  const [registration, setRegistration] = useState(settings.registrationDuringVoting);
+  const [liveResults, setLiveResults] = useState(settings.liveResultsDuringVoting);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const voting = phase === "pemungutan";
+
+  async function send(body: Record<string, unknown>, success: string) {
+    setBusy(true); setMessage(""); setError("");
+    try {
+      const response = await fetch("/api/admin/pemilu", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const result = await response.json() as { message?: string };
+      if (!response.ok) throw new Error(result.message || "Pengaturan pemilu gagal disimpan.");
+      setMessage(success);
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Pengaturan pemilu gagal disimpan.");
+    } finally { setBusy(false); }
+  }
+
+  function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void send({
+      aksi: "jadwal",
+      dibukaPada: opensAt,
+      ditutupPada: closesAt,
+      pendaftaranSaatVoting: registration,
+      hasilLiveSaatVoting: liveResults
+    }, "Jadwal pemilu tersimpan.");
+  }
+
+  function openNow() {
+    if (!window.confirm("Buka pemungutan suara SEKARANG? Pemilih dapat langsung memilih, dan kandidat, impor data, serta kelola akun akan dikunci.")) return;
+    void send({ aksi: "buka" }, "Pemungutan suara dibuka.");
+  }
+
+  function closeNow() {
+    if (!window.confirm("Tutup pemungutan suara SEKARANG? Penutupan bersifat FINAL dan tidak dapat dibuka kembali.")) return;
+    if (!window.confirm("Konfirmasi sekali lagi: tutup pemungutan suara secara permanen?")) return;
+    void send({ aksi: "tutup" }, "Pemungutan suara ditutup.");
+  }
+
+  return (
+    <section className="app-card card-pad">
+      <div className="section-title-row">
+        <div><span className="eyebrow">Status Pemilu</span><h2>{ELECTION_PHASE_LABELS[phase]}</h2></div>
+        <span className={`badge ${phaseBadge[phase]}`}>{ELECTION_PHASE_LABELS[phase]}</span>
+      </div>
+      <div className="detail-grid">
+        <div className="detail-item"><span>Dibuka</span><strong>{settings.opensAt ? formatWib(settings.opensAt) : "Belum dijadwalkan"}</strong></div>
+        <div className="detail-item"><span>Ditutup</span><strong>{settings.closedManuallyAt ? `${formatWib(settings.closedManuallyAt)} (manual)` : settings.closesAt ? formatWib(settings.closesAt) : "Sampai ditutup manual"}</strong></div>
+        <div className="detail-item"><span>Pendaftaran saat voting</span><strong>{settings.registrationDuringVoting ? "Dibuka" : "Ditutup"}</strong></div>
+        <div className="detail-item"><span>Hasil live untuk pemilih saat voting</span><strong>{settings.liveResultsDuringVoting ? "Per kandidat" : "Hanya jumlah pemilih"}</strong></div>
+      </div>
+
+      {phase === "ditutup" ? (
+        <div className="alert alert-success" role="status">Pemungutan suara telah ditutup. Hasil sudah final dan pengaturan pemilu tidak dapat diubah.</div>
+      ) : (
+        <form className="form-grid" onSubmit={save} style={{ marginTop: 16 }}>
+          <div className="field half">
+            <label htmlFor="dibukaPada">Waktu dibuka (WIB)</label>
+            <input className="app-input" type="datetime-local" id="dibukaPada" value={opensAt} disabled={voting} onChange={(event) => setOpensAt(event.target.value)} />
+          </div>
+          <div className="field half">
+            <label htmlFor="ditutupPada">Waktu ditutup (WIB)</label>
+            <input className="app-input" type="datetime-local" id="ditutupPada" value={closesAt} onChange={(event) => setClosesAt(event.target.value)} />
+          </div>
+          <div className="field">
+            <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <input type="checkbox" checked={registration} disabled={voting} onChange={(event) => setRegistration(event.target.checked)} />
+              <span>Izinkan pendaftaran mandiri selama pemungutan suara</span>
+            </label>
+            <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
+              <input type="checkbox" checked={liveResults} disabled={voting} onChange={(event) => setLiveResults(event.target.checked)} />
+              <span>Tampilkan perolehan per kandidat kepada pemilih selama pemungutan suara</span>
+            </label>
+          </div>
+          <div className="form-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <LoadingButton busy={busy} type="submit" className="app-btn app-btn-primary"><i className="bx bx-calendar-check" /> Simpan Jadwal</LoadingButton>
+            {phase === "persiapan" && <button type="button" className="app-btn app-btn-gold" disabled={busy} onClick={openNow}><i className="bx bx-play-circle" /> Buka Sekarang</button>}
+            {voting && <button type="button" className="app-btn app-btn-danger" disabled={busy} onClick={closeNow}><i className="bx bx-stop-circle" /> Tutup Sekarang</button>}
+          </div>
+          <p className="muted" style={{ fontSize: ".75rem", margin: 0 }}>
+            {voting
+              ? "Selama pemungutan suara hanya waktu tutup yang dapat diubah. Kandidat, impor data, kelola akun, dan reset wajah dikunci."
+              : "Kosongkan waktu ditutup bila pemungutan suara akan ditutup manual. Penutupan bersifat final."}
+          </p>
+        </form>
+      )}
+      {message && <div className="alert alert-success" role="status">{message}</div>}
+      {error && <div className="alert alert-danger" role="alert">{error}</div>}
+    </section>
+  );
+}

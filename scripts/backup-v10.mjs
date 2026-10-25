@@ -21,8 +21,19 @@ const existing = await sql`
 `;
 const names = new Set(existing.map((row) => row.table_name));
 // Urutan mengikuti foreign key. Tabel yang belum ada (versi lebih lama) dilewati.
-const TABLES = ["candidates", "users", "user_face_templates", "ballots", "admin_audit_log", "security_events", "dpt_resmi"]
+const TABLES = ["candidates", "users", "user_face_templates", "ballots", "admin_audit_log", "security_events", "dpt_resmi", "pengaturan_pemilu"]
   .filter((table) => names.has(table));
+// Hanya kolom yang ada di database sumber yang dipulihkan; kolom yang ditambahkan versi lebih baru
+// (mis. users.login_* di v10.2) memakai nilai bawaan skema, bukan NULL.
+const columnRows = await sql`
+  SELECT table_name, column_name FROM information_schema.columns
+  WHERE table_schema = 'public'
+  ORDER BY ordinal_position
+`;
+const columnsOf = (table) => columnRows
+  .filter((row) => row.table_name === table)
+  .map((row) => `"${row.column_name}"`)
+  .join(", ");
 
 function dollarQuote(text) {
   let tag = "ika_backup";
@@ -48,8 +59,13 @@ for (const table of TABLES) {
   const key = table === "dpt_resmi" ? " ORDER BY t.nim" : order;
   const rows = await sql.query(`SELECT COALESCE(json_agg(t${key}), '[]'::json)::text AS data, COUNT(*)::int AS total FROM ${table} t`);
   counts[table] = rows[0].total;
-  lines.push(`INSERT INTO ${table} SELECT * FROM json_populate_recordset(NULL::${table}, ${dollarQuote(rows[0].data)});`);
-  if (!["ballots", "dpt_resmi"].includes(table)) {
+  // Baris pengaturan_pemilu (id = 1) sudah dibuat oleh skema, jadi isinya ditimpa.
+  const upsert = table === "pengaturan_pemilu"
+    ? " ON CONFLICT (id) DO UPDATE SET dibuka_pada = EXCLUDED.dibuka_pada, ditutup_pada = EXCLUDED.ditutup_pada, ditutup_manual_pada = EXCLUDED.ditutup_manual_pada, pendaftaran_saat_voting = EXCLUDED.pendaftaran_saat_voting, hasil_live_saat_voting = EXCLUDED.hasil_live_saat_voting"
+    : "";
+  const columns = columnsOf(table);
+  lines.push(`INSERT INTO ${table} (${columns}) SELECT ${columns} FROM json_populate_recordset(NULL::${table}, ${dollarQuote(rows[0].data)})${upsert};`);
+  if (!["ballots", "dpt_resmi", "pengaturan_pemilu"].includes(table)) {
     lines.push(`SELECT setval(pg_get_serial_sequence('${table}', 'id'), (SELECT COALESCE(MAX(id), 1) FROM ${table}));`);
   }
   lines.push("");
