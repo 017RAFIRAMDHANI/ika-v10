@@ -142,6 +142,10 @@ Menu **Import → DPT Resmi**: unggah .xlsx/.csv dengan NIM di kolom A dan Nama 
 daftar. Atur kolom NIM sebagai Teks agar angka 0 di depan tidak hilang. Selama DPT resmi belum
 diunggah, halaman Import menampilkan peringatan dan pendaftaran mandiri tidak dicocokkan.
 
+**Simulasi:** `contoh/dpt-resmi-simulasi.xlsx` berisi 40 NIM dan nama **fiktif** (lembar *DPT Resmi*),
+lembar *Skenario Uji* (9 skenario pendaftaran beserta hasil yang diharapkan), dan lembar *Petunjuk*.
+Setelah simulasi, unggah DPT asli; unggahan baru mengganti seluruh daftar.
+
 ### 2.5d Rekonsiliasi suara dan peringatan keamanan
 
 Menu **Audit** menampilkan **Rekonsiliasi Suara**: untuk tiap kandidat, angka penghitung suara
