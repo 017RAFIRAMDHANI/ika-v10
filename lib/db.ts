@@ -6,7 +6,6 @@ import type {
   AdminUserRecord,
   AuditLogEntry,
   Candidate,
-  SecurityEventEntry,
   UserRole,
   VoteIntegrity,
   VoterRecord
@@ -976,17 +975,6 @@ export async function recordSecurityEvent(
   `;
 }
 
-export async function getSecurityEvents(limit = 200): Promise<SecurityEventEntry[]> {
-  const sql = getSql();
-  const rows = await sql`
-    SELECT id::int AS id, event, user_label AS "userLabel", details, created_at::text AS "createdAt"
-    FROM security_events
-    ORDER BY id DESC
-    LIMIT ${limit}
-  `;
-  return rows as SecurityEventEntry[];
-}
-
 // ---------- K6a: DPT resmi untuk mencocokkan pendaftaran mandiri
 
 export async function getOfficialDptStatus() {
@@ -1116,6 +1104,37 @@ export async function openElectionNow(actor: AuditActor) {
     SELECT id FROM updated
   `;
   return rows.length === 1;
+}
+
+// v10.5: kembali ke Persiapan (jadwal dikosongkan) hanya selama belum ada suara; trigger
+// ika_jaga_pengaturan_pemilu menegakkan syarat yang sama di database.
+export async function resetElectionToPreparation(actor: AuditActor) {
+  const sql = getSql();
+  const rows = await sql`
+    WITH updated AS (
+      UPDATE pengaturan_pemilu
+      SET dibuka_pada = NULL, ditutup_pada = NULL, ditutup_manual_pada = NULL
+      WHERE id = 1
+        AND (dibuka_pada IS NOT NULL OR ditutup_manual_pada IS NOT NULL)
+        AND NOT EXISTS (SELECT 1 FROM ballots)
+        AND NOT EXISTS (SELECT 1 FROM users WHERE has_voted)
+      RETURNING id
+    ), logged AS (
+      INSERT INTO admin_audit_log (actor_id, actor_user_id, actor_name, action, target_type, target_label, details)
+      SELECT ${actor.id}, ${actor.userId}, ${actor.displayName}, 'pemilu.reset', 'pemilu', 'Pemungutan suara',
+        jsonb_build_object('suratSuara', 0)
+      FROM updated
+      RETURNING id
+    )
+    SELECT id FROM updated
+  `;
+  return rows.length === 1;
+}
+
+export async function countBallots() {
+  const sql = getSql();
+  const rows = await sql`SELECT COUNT(*)::int AS total FROM ballots`;
+  return Number(rows[0]?.total ?? 0);
 }
 
 // Penutupan manual bersifat final.

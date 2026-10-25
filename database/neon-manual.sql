@@ -13,6 +13,7 @@
 --   K6  security_events (wajah dikunci / wajah ganda) dan dpt_resmi (daftar alumni resmi).
 --   T1  pengaturan_pemilu: jadwal & status pemilu (persiapan -> pemungutan suara -> ditutup).
 --   T4  Pembatasan percobaan login: users.login_* (kunci per akun) dan login_throttle (per jaringan).
+--   v10.5 Pemilu dapat dikembalikan ke Persiapan selama belum ada suara (uji coba).
 --   v10.3 Pendaftaran mandiri tanpa password: users.nim (User ID = kode angkatan + tanggal lahir).
 -- ================================================================
 
@@ -200,11 +201,21 @@ CREATE TRIGGER trg_security_events_no_truncate
   FOR EACH STATEMENT EXECUTE FUNCTION ika_tolak_perubahan();
 
 -- Aturan perubahan ditegakkan di database:
---   - setelah ditutup (manual atau jadwal lewat) tidak ada yang dapat diubah;
+--   - setelah ditutup (manual atau jadwal lewat) tidak ada yang dapat diubah, kecuali dikembalikan
+--     ke Persiapan selama belum ada satu pun suara (v10.5);
 --   - setelah dibuka, hanya waktu tutup (ke masa depan) dan penutupan manual yang diizinkan.
 CREATE OR REPLACE FUNCTION ika_jaga_pengaturan_pemilu() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
+  -- Kembali ke Persiapan (seluruh jadwal dikosongkan) hanya bila belum ada satu pun suara.
+  IF NEW.dibuka_pada IS NULL AND NEW.ditutup_pada IS NULL AND NEW.ditutup_manual_pada IS NULL
+    AND (OLD.dibuka_pada IS NOT NULL OR OLD.ditutup_manual_pada IS NOT NULL) THEN
+    IF EXISTS (SELECT 1 FROM ballots) OR EXISTS (SELECT 1 FROM users WHERE has_voted) THEN
+      RAISE EXCEPTION 'Sudah ada suara masuk; pemilu tidak dapat dikembalikan ke tahap persiapan.';
+    END IF;
+    NEW.updated_at := NOW();
+    RETURN NEW;
+  END IF;
   IF OLD.ditutup_manual_pada IS NOT NULL OR (OLD.ditutup_pada IS NOT NULL AND OLD.ditutup_pada <= NOW()) THEN
     RAISE EXCEPTION 'Pemungutan suara telah ditutup; pengaturan pemilu tidak dapat diubah.';
   END IF;

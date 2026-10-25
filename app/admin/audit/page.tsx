@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
-import { getAuditLog, getSecurityEvents, getVoteIntegrity } from "@/lib/db";
+import { getAuditLog, getVoteIntegrity } from "@/lib/db";
 import { getSessionUser, isAdmin } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -22,16 +22,8 @@ const actionLabels: Record<string, string> = {
   "pemilu.jadwal": "Ubah jadwal pemilu",
   "pemilu.buka": "Buka pemungutan suara",
   "pemilu.tutup": "Tutup pemungutan suara",
+  "pemilu.reset": "Kembalikan pemilu ke Persiapan (tanpa suara)",
   "sistem.migrasi_v9": "Migrasi data dari v9"
-};
-
-const eventLabels: Record<string, string> = {
-  "wajah.dikunci": "Verifikasi wajah dikunci (gagal berulang)",
-  "wajah.ganda": "Wajah mirip akun lain (ditahan)",
-  "login.akun_dikunci": "Login akun dikunci (salah password berulang)",
-  "login.jaringan_dibatasi": "Login pemilih dibatasi dari satu jaringan",
-  "admin_login.jaringan_dibatasi": "Login admin dibatasi dari satu jaringan",
-  "pendaftaran.jaringan_dibatasi": "Kode pendaftaran salah berulang dari satu jaringan"
 };
 
 function formatDate(value: string) {
@@ -53,7 +45,7 @@ function formatDetails(details: Record<string, string | number | boolean>) {
 export default async function AuditLogPage() {
   const user = await getSessionUser();
   if (!user || !isAdmin(user)) redirect("/admin/login");
-  const [entries, integrity, events] = await Promise.all([getAuditLog(), getVoteIntegrity(), getSecurityEvents()]);
+  const [entries, integrity] = await Promise.all([getAuditLog(), getVoteIntegrity()]);
 
   return (
     <AppShell user={user}>
@@ -93,31 +85,6 @@ export default async function AuditLogPage() {
                 </tr>
               ))}
               {integrity.candidates.length === 0 && <tr><td colSpan={5}><div className="empty-state"><i className="bx bx-user-x" />Belum ada kandidat.</div></td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="app-card">
-        <div className="toolbar">
-          <div>
-            <strong style={{ color: "var(--app-900)", fontSize: ".85rem" }}>Peringatan Keamanan</strong>
-            <div className="muted" style={{ fontSize: ".66rem", marginTop: 4 }}>Verifikasi wajah atau login yang dikunci karena gagal berulang, percobaan berulang dari satu jaringan, dan pendaftaran yang ditahan karena wajah mirip akun lain. Tinjau dan tindak lanjuti oleh panitia.</div>
-          </div>
-        </div>
-        <div className="data-table-wrap">
-          <table className="data-table">
-            <thead><tr><th>Waktu</th><th>Peristiwa</th><th>Akun</th><th>Rincian</th></tr></thead>
-            <tbody>
-              {events.map((event) => (
-                <tr key={event.id}>
-                  <td>{formatDate(event.createdAt)}</td>
-                  <td><span className="badge badge-warning">{eventLabels[event.event] ?? event.event}</span></td>
-                  <td>{event.userLabel ?? "-"}</td>
-                  <td className="muted">{formatDetails(event.details)}</td>
-                </tr>
-              ))}
-              {events.length === 0 && <tr><td colSpan={4}><div className="empty-state"><i className="bx bx-shield-quarter" />Belum ada peringatan keamanan.</div></td></tr>}
             </tbody>
           </table>
         </div>

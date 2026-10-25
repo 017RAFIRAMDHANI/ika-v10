@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { closeElectionNow, openElectionNow, saveElectionSchedule } from "@/lib/db";
+import { closeElectionNow, openElectionNow, resetElectionToPreparation, saveElectionSchedule } from "@/lib/db";
 import { fromWibInput } from "@/lib/election";
 import { getElectionState } from "@/lib/election-guard";
 import { auditActor, getSessionUser, isAdmin } from "@/lib/session";
@@ -14,7 +14,8 @@ const schema = z.discriminatedUnion("aksi", [
     hasilLiveSaatVoting: z.boolean()
   }),
   z.object({ aksi: z.literal("buka") }),
-  z.object({ aksi: z.literal("tutup") })
+  z.object({ aksi: z.literal("tutup") }),
+  z.object({ aksi: z.literal("reset") })
 ]);
 
 // Form memakai presisi menit, sedangkan "Buka Sekarang" menyimpan detik.
@@ -32,8 +33,23 @@ export async function POST(request: Request) {
   if (!parsed.success) return jsonError("Data pengaturan pemilu tidak valid.");
 
   const { settings, phase, now } = await getElectionState();
-  if (phase === "ditutup") return jsonError("Pemungutan suara telah ditutup; pengaturan pemilu bersifat final.", 409);
   const actor = auditActor(session);
+
+  // v10.5: kembali ke Persiapan hanya selama belum ada suara (mis. setelah uji coba buka/tutup).
+  if (parsed.data.aksi === "reset") {
+    if (phase === "persiapan") return jsonError("Pemilu sudah berada di tahap Persiapan.", 409);
+    try {
+      if (!(await resetElectionToPreparation(actor))) {
+        return jsonError("Sudah ada suara masuk; pemilu tidak dapat dikembalikan ke tahap Persiapan.", 409);
+      }
+      return Response.json({ ok: true });
+    } catch (error) {
+      console.error("Election reset failed:", error);
+      return jsonError("Sudah ada suara masuk; pemilu tidak dapat dikembalikan ke tahap Persiapan.", 409);
+    }
+  }
+
+  if (phase === "ditutup") return jsonError("Pemungutan suara telah ditutup; pengaturan pemilu bersifat final.", 409);
 
   try {
     if (parsed.data.aksi === "buka") {

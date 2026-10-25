@@ -87,10 +87,3 @@ export type VoteIntegrity = {
   consistent: boolean;
 };
 
-export type SecurityEventEntry = {
-  id: number;
-  event: string;
-  userLabel: string | null;
-  details: Record<string, string | number | boolean>;
-  createdAt: string;
-};

@@ -18,7 +18,7 @@ const phaseBadge: Record<ElectionPhase, string> = {
   ditutup: "badge-neutral"
 };
 
-export default function ElectionControl({ settings, phase, faceTemplateCount }: { settings: ElectionSettings; phase: ElectionPhase; faceTemplateCount: number }) {
+export default function ElectionControl({ settings, phase, faceTemplateCount, ballotCount }: { settings: ElectionSettings; phase: ElectionPhase; faceTemplateCount: number; ballotCount: number }) {
   const router = useRouter();
   const [opensAt, setOpensAt] = useState(toWibInput(settings.opensAt));
   const [closesAt, setClosesAt] = useState(toWibInput(settings.closesAt));
@@ -82,6 +82,12 @@ export default function ElectionControl({ settings, phase, faceTemplateCount }: 
     } finally { setBusy(false); }
   }
 
+  // v10.5: hanya tersedia selama belum ada suara masuk (dijaga juga oleh trigger database).
+  function resetToPreparation() {
+    if (!window.confirm("Kembalikan pemilu ke tahap Persiapan? Jadwal dikosongkan dan pemungutan suara tertutup sampai dibuka lagi. Ini hanya bisa karena belum ada suara masuk.")) return;
+    void send({ aksi: "reset" }, "Pemilu dikembalikan ke tahap Persiapan.");
+  }
+
   function closeNow() {
     if (!window.confirm("Tutup pemungutan suara SEKARANG? Penutupan bersifat FINAL dan tidak dapat dibuka kembali.")) return;
     if (!window.confirm("Konfirmasi sekali lagi: tutup pemungutan suara secara permanen?")) return;
@@ -103,7 +109,16 @@ export default function ElectionControl({ settings, phase, faceTemplateCount }: 
 
       {phase === "ditutup" ? (
         <>
-          <div className="alert alert-success" role="status">Pemungutan suara telah ditutup. Hasil sudah final dan pengaturan pemilu tidak dapat diubah.</div>
+          {ballotCount > 0 ? (
+            <div className="alert alert-success" role="status">Pemungutan suara telah ditutup. Hasil sudah final dan pengaturan pemilu tidak dapat diubah.</div>
+          ) : (
+            <div className="alert alert-warning" role="status">
+              Pemungutan suara ditutup tanpa satu pun suara masuk, sehingga pemilu masih dapat dikembalikan ke tahap Persiapan (misalnya setelah uji coba).
+              <div style={{ marginTop: 12 }}>
+                <button type="button" className="app-btn app-btn-primary" disabled={busy} onClick={resetToPreparation}><i className="bx bx-reset" /> Kembali ke Persiapan</button>
+              </div>
+            </div>
+          )}
           <div className="detail-section" style={{ marginTop: 16 }}>
             <strong>Retensi data wajah (UU PDP)</strong>
             <p className="muted" style={{ fontSize: ".78rem", margin: "6px 0 12px" }}>
@@ -142,6 +157,7 @@ export default function ElectionControl({ settings, phase, faceTemplateCount }: 
             <LoadingButton busy={busy} type="submit" className="app-btn app-btn-primary"><i className="bx bx-calendar-check" /> Simpan Jadwal</LoadingButton>
             {phase === "persiapan" && <button type="button" className="app-btn app-btn-gold" disabled={busy} onClick={openNow}><i className="bx bx-play-circle" /> Buka Sekarang</button>}
             {voting && <button type="button" className="app-btn app-btn-danger" disabled={busy} onClick={closeNow}><i className="bx bx-stop-circle" /> Tutup Sekarang</button>}
+            {voting && ballotCount === 0 && <button type="button" className="app-btn app-btn-soft" disabled={busy} onClick={resetToPreparation}><i className="bx bx-reset" /> Kembali ke Persiapan</button>}
           </div>
           <p className="muted" style={{ gridColumn: "span 12", fontSize: ".75rem", margin: 0 }}>
             {voting
