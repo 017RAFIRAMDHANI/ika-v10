@@ -14,6 +14,7 @@ const adminLinks = [
   { href: "/datapemilih", label: "DPT", icon: "bx-group" },
   { href: "/calonketua", label: "Kandidat", icon: "bx-user-pin" },
   { href: "/live", label: "Hasil", icon: "bx-bar-chart-alt-2" },
+  { href: "/admin/pemilu", label: "Pemilu", icon: "bx-calendar-check" },
   { href: "/admin/users", label: "Akun", icon: "bx-id-card" },
   { href: "/excel", label: "Import", icon: "bx-import" },
   { href: "/admin/audit", label: "Audit", icon: "bx-history" }
@@ -80,6 +81,7 @@ export default function AppShell({
             </button>
             <h3>Menu Administrator</h3>
             <div className="mobile-more-grid">
+              <Link href="/admin/pemilu" onClick={() => setMoreOpen(false)}><i className="bx bx-calendar-check" /><span>Jadwal Pemilu</span></Link>
               <Link href="/admin/users" onClick={() => setMoreOpen(false)}><i className="bx bx-id-card" /><span>Kelola Akun</span></Link>
               <Link href="/excel" onClick={() => setMoreOpen(false)}><i className="bx bx-import" /><span>Import Excel</span></Link>
               <Link href="/admin/audit" onClick={() => setMoreOpen(false)}><i className="bx bx-history" /><span>Log Audit</span></Link>

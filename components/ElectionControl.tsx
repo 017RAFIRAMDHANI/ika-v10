@@ -143,7 +143,7 @@ export default function ElectionControl({ settings, phase, faceTemplateCount }: 
             {phase === "persiapan" && <button type="button" className="app-btn app-btn-gold" disabled={busy} onClick={openNow}><i className="bx bx-play-circle" /> Buka Sekarang</button>}
             {voting && <button type="button" className="app-btn app-btn-danger" disabled={busy} onClick={closeNow}><i className="bx bx-stop-circle" /> Tutup Sekarang</button>}
           </div>
-          <p className="muted" style={{ fontSize: ".75rem", margin: 0 }}>
+          <p className="muted" style={{ gridColumn: "span 12", fontSize: ".75rem", margin: 0 }}>
             {voting
               ? "Selama pemungutan suara hanya waktu tutup yang dapat diubah. Kandidat, impor data, kelola akun, dan reset wajah dikunci."
               : "Kosongkan waktu ditutup bila pemungutan suara akan ditutup manual. Penutupan bersifat final."}
