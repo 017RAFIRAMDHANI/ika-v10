@@ -4,7 +4,6 @@ import type { FaceDescriptorEngine, FaceDeviceClass, FaceTemplateRole } from "@/
 import type {
   AdminStats,
   AdminUserRecord,
-  AuditLogEntry,
   Candidate,
   UserRole,
   VoteIntegrity,
@@ -859,24 +858,6 @@ export async function logAdminAction(
   `;
 }
 
-export async function getAuditLog(limit = 300): Promise<AuditLogEntry[]> {
-  const sql = getSql();
-  const rows = await sql`
-    SELECT
-      id::int AS id,
-      actor_user_id AS "actorUserId",
-      actor_name AS "actorName",
-      action,
-      target_type AS "targetType",
-      target_label AS "targetLabel",
-      details,
-      created_at::text AS "createdAt"
-    FROM admin_audit_log
-    ORDER BY id DESC
-    LIMIT ${limit}
-  `;
-  return rows as AuditLogEntry[];
-}
 
 // Rekonsiliasi: jumlah surat suara anonim per kandidat harus sama dengan penghitung suara kandidat,
 // dan jumlah pemilih yang sudah memilih harus sama dengan jumlah surat suara.

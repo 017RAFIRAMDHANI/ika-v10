@@ -48,7 +48,7 @@ export default async function AdminDashboardPage() {
         <Link href="/admin/users" className="admin-menu-card"><i className="bx bx-group" /><strong>Kelola Akun</strong><span>Tambah akun, ubah role/password, dan hapus akun yang belum memilih.</span></Link>
         <Link href="/live" className="admin-menu-card"><i className="bx bx-bar-chart-alt-2" /><strong>Hasil Suara</strong><span>Lihat rekap kandidat dan grafik perolehan suara.</span></Link>
         <Link href="/excel" className="admin-menu-card"><i className="bx bx-import" /><strong>Import Excel</strong><span>Impor akun pemilih secara massal dari XLSX atau CSV.</span></Link>
-        <Link href="/admin/audit" className="admin-menu-card"><i className="bx bx-history" /><strong>Log Audit</strong><span>Riwayat seluruh tindakan administrator dan rekonsiliasi jumlah suara.</span></Link>
+        <Link href="/admin/audit" className="admin-menu-card"><i className="bx bx-history" /><strong>Audit Suara</strong><span>Rekonsiliasi jumlah suara dengan surat suara anonim.</span></Link>
       </section>
     </AppShell>
   );

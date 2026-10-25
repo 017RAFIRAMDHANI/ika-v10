@@ -84,7 +84,7 @@ export default function AppShell({
               <Link href="/admin/pemilu" onClick={() => setMoreOpen(false)}><i className="bx bx-calendar-check" /><span>Jadwal Pemilu</span></Link>
               <Link href="/admin/users" onClick={() => setMoreOpen(false)}><i className="bx bx-id-card" /><span>Kelola Akun</span></Link>
               <Link href="/excel" onClick={() => setMoreOpen(false)}><i className="bx bx-import" /><span>Import Excel</span></Link>
-              <Link href="/admin/audit" onClick={() => setMoreOpen(false)}><i className="bx bx-history" /><span>Log Audit</span></Link>
+              <Link href="/admin/audit" onClick={() => setMoreOpen(false)}><i className="bx bx-history" /><span>Audit Suara</span></Link>
               <form action="/api/auth/logout?target=admin" method="post" onSubmit={(e) => { if (!window.confirm("Apakah Anda yakin ingin keluar dari Admin Panel?")) e.preventDefault(); }}>
                 <button type="submit"><i className="bx bx-log-out" /><span>Keluar</span></button>
               </form>

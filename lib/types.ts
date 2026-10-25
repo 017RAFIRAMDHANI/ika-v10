@@ -69,16 +69,6 @@ export type AdminStats = {
   totalVotes: number;
 };
 
-export type AuditLogEntry = {
-  id: number;
-  actorUserId: string;
-  actorName: string;
-  action: string;
-  targetType: string | null;
-  targetLabel: string | null;
-  details: Record<string, string | number | boolean>;
-  createdAt: string;
-};
 
 export type VoteIntegrity = {
   candidates: Array<{ id: number; name: string; votes: number; ballots: number }>;
