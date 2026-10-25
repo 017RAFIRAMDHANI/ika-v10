@@ -180,6 +180,8 @@ transaksi reset ini; `DELETE` biasa tetap ditolak trigger. Upgrade: jalankan
 
 ### 2.5f Simulasi banyak pemilih (uji coba / uji beban)
 
+Tutorial langkah demi langkah untuk pemula: **`PANDUAN-SIMULASI.md`**.
+
 Untuk mencoba alur lengkap dengan banyak pemilih sebelum hari H (pernah dijalankan: 100 pemilih di
 `ika-v10.vercel.app`, 100/100 berhasil, sekitar 5 detik per pemilih, rekonsiliasi konsisten).
 Wajah memakai descriptor sintetis (bukan kamera); seluruh pemeriksaan server tetap berlaku.
