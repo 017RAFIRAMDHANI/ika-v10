@@ -2,7 +2,7 @@
 
 > **Catatan v10:** dokumen ini berasal dari versi sebelumnya. Untuk instalasi, struktur
 > database (tabel `ballots` dan `admin_audit_log`), migrasi dari v9, dan backup, ikuti
-> [`PANDUAN-V10.md`](PANDUAN-V10.md).
+> [`PANDUAN-V10.md`](../PANDUAN-V10.md).
 
 Proyek ini menggunakan **sistem/backend dari `voting-ika-nextjs` lama** dan **UI/UX dari paket `new_design`**.
 

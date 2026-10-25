@@ -117,7 +117,7 @@ memastikan maksimal satu template aktif per user dan role. Reset admin mengisi
 
 Gunakan database Neon V4 baru dan jalankan `database/neon-manual.sql`. Detail
 instalasi, matriks pengujian, backup, dan reset tersedia di
-`PANDUAN-V4-DATABASE-BARU.md`.
+`arsip-versi-lama/PANDUAN-V4-DATABASE-BARU.md`.
 
 ## Batasan operasional
 

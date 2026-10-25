@@ -1,5 +1,7 @@
 # Database IKA v10
 
+Semua file SQL di bawah ini berada di folder `database/` proyek.
+
 | File | Kegunaan |
 | --- | --- |
 | `neon-manual.sql` | Skema v10.7. Jalankan sekali pada database Neon baru yang kosong. |

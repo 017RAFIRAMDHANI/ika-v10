@@ -2,7 +2,7 @@
 
 > **Catatan v10:** dokumen ini berasal dari versi sebelumnya. Untuk instalasi, struktur
 > database (tabel `ballots` dan `admin_audit_log`), migrasi dari v9, dan backup, ikuti
-> [`PANDUAN-V10.md`](PANDUAN-V10.md).
+> [`PANDUAN-V10.md`](../PANDUAN-V10.md).
 
 Dokumen patch V3 lama tidak berlaku untuk arsitektur V4 karena V4 memakai
 database baru dan tabel `user_face_templates` dengan profil primary per

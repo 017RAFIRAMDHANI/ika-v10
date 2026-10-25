@@ -2,7 +2,7 @@
 
 > **Catatan v10:** dokumen ini berasal dari versi sebelumnya. Untuk instalasi, struktur
 > database (tabel `ballots` dan `admin_audit_log`), migrasi dari v9, dan backup, ikuti
-> [`PANDUAN-V10.md`](PANDUAN-V10.md).
+> [`PANDUAN-V10.md`](../PANDUAN-V10.md).
 
 Arsip sumber tidak memuat dump MySQL (`.sql`). Karena itu, proyek ini sudah
 memindahkan skema, relasi, kandidat dari seeder, aset, dan logika aplikasi,

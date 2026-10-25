@@ -3,7 +3,7 @@
 // Pemakaian: node --env-file=.env.local scripts/simulasi/daftar-pemilih.mjs [jumlah=100] [url=https://ika-v10.vercel.app]
 // Syarat: status pemilu PERSIAPAN. Akun: NIM SIMULASI-001 dst. Daftar kode + wajah disimpan di
 // scripts/simulasi/.hasil/pemilih.json (di-.gitignore) dan dipakai pilih-acak.mjs. Bisa dilanjutkan.
-// Bersihkan: Reset Uji Coba (menu Pemilu) lalu database/hapus-akun-simulasi.sql. Lihat PANDUAN-V10 2.5f.
+// Bersihkan: Reset Uji Coba (menu Pemilu) lalu database/hapus-akun-simulasi.sql. Lihat panduan/PANDUAN-SIMULASI.md.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { neon } from "@neondatabase/serverless";
 import { ARC, call, log, newFace, scanPayload } from "./lib.mjs";

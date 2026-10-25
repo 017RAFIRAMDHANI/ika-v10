@@ -35,7 +35,7 @@ export const FACE_MATCH_THRESHOLD = Number.isFinite(configuredMatchThreshold)
   && configuredMatchThreshold <= 0.9
   ? configuredMatchThreshold
   : 0.68;
-// Ambang cosine ArcFace hasil kalibrasi lintas perangkat (lihat VERIFIKASI-WAJAH.md).
+// Ambang cosine ArcFace hasil kalibrasi lintas perangkat (lihat panduan/VERIFIKASI-WAJAH.md).
 const configuredArcFaceThreshold = Number(process.env.FACE_ARCFACE_MATCH_THRESHOLD);
 export const FACE_ARCFACE_MATCH_THRESHOLD = Number.isFinite(configuredArcFaceThreshold)
   && configuredArcFaceThreshold >= 0.4
