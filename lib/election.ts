@@ -11,6 +11,9 @@ export type ElectionSettings = {
 // T3: kalimat yang harus diketik admin untuk menghapus seluruh data wajah setelah pemilu ditutup.
 export const FACE_PURGE_CONFIRMATION = "HAPUS DATA WAJAH";
 
+// v10.7: kalimat yang harus diketik admin untuk Reset Uji Coba (menghapus seluruh suara percobaan).
+export const TRIAL_RESET_CONFIRMATION = "RESET UJI COBA";
+
 export const ELECTION_PHASE_LABELS: Record<ElectionPhase, string> = {
   persiapan: "Persiapan & Aktivasi",
   pemungutan: "Pemungutan Suara",

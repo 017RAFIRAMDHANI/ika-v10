@@ -1099,6 +1099,36 @@ export async function resetElectionToPreparation(actor: AuditActor) {
   return rows.length === 1;
 }
 
+// v10.7: Reset Uji Coba. Menghapus SEMUA surat suara, status sudah memilih, dan penghitung, lalu
+// mengembalikan pemilu ke Persiapan dalam satu transaksi. Trigger append-only hanya mengizinkan
+// DELETE surat suara bila penanda ika.reset_uji_coba menyala di transaksi ini (set_config lokal).
+// Jumlah suara dan perolehan sebelum reset dicatat permanen di admin_audit_log.
+export async function resetTrialElection(actor: AuditActor) {
+  const sql = getSql();
+  const results = await sql.transaction([
+    sql`SELECT set_config('ika.reset_uji_coba', 'ya', true)`,
+    sql`
+      INSERT INTO admin_audit_log (actor_id, actor_user_id, actor_name, action, target_type, target_label, details)
+      SELECT ${actor.id}, ${actor.userId}, ${actor.displayName}, 'pemilu.reset_uji_coba', 'pemilu', 'Reset uji coba',
+        jsonb_build_object(
+          'suratSuaraDihapus', (SELECT COUNT(*) FROM ballots),
+          'akunSudahMemilih', (SELECT COUNT(*) FROM users WHERE has_voted),
+          'perolehanSebelumReset', COALESCE((SELECT jsonb_object_agg(name, votes ORDER BY id) FROM candidates), '{}'::jsonb)
+        )
+      RETURNING (details->>'suratSuaraDihapus')::int AS ballots
+    `,
+    sql`DELETE FROM ballots`,
+    sql`UPDATE users SET has_voted = FALSE, updated_at = NOW() WHERE has_voted`,
+    sql`UPDATE candidates SET votes = 0 WHERE votes <> 0`,
+    sql`
+      UPDATE pengaturan_pemilu
+      SET dibuka_pada = NULL, ditutup_pada = NULL, ditutup_manual_pada = NULL
+      WHERE id = 1 AND (dibuka_pada IS NOT NULL OR ditutup_manual_pada IS NOT NULL)
+    `
+  ]);
+  return Number((results[1] as Array<{ ballots: number }>)[0]?.ballots ?? 0);
+}
+
 export async function countBallots() {
   const sql = getSql();
   const rows = await sql`SELECT COUNT(*)::int AS total FROM ballots`;

@@ -66,7 +66,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!id) return jsonError("ID akun tidak valid.");
   if (id === session.id) return jsonError("Akun yang sedang digunakan tidak dapat dihapus.", 409);
   const result = await deleteAdminUser(id, auditActor(session));
-  if (result === "voted") return jsonError("Akun yang sudah memilih tidak dapat dihapus agar jumlah suara tetap dapat diaudit.", 409);
+  if (result === "voted") {
+    return jsonError("Akun yang sudah memilih tidak dapat dihapus agar jumlah suara tetap dapat diaudit. Untuk akun uji coba, jalankan Reset Uji Coba di menu Pemilu terlebih dahulu.", 409);
+  }
   if (result === "missing") return jsonError("Akun tidak ditemukan.", 404);
   return Response.json({ ok: true });
 }

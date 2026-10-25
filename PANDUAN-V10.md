@@ -166,6 +166,18 @@ FROM admin_audit_log ORDER BY created_at DESC;
 SELECT * FROM security_events ORDER BY created_at DESC;
 ```
 
+### 2.5e Reset Uji Coba (v10.7)
+
+Untuk percobaan sebelum hari H. Di menu **Pemilu**, selama sudah ada suara, muncul bagian **Uji coba**
+dengan tombol **Reset Uji Coba** (konfirmasi ketik `RESET UJI COBA`). Reset menghapus **seluruh**
+surat suara, status "sudah memilih", dan penghitung kandidat, lalu mengembalikan pemilu ke
+Persiapan. Setelah itu akun uji (termasuk yang tadinya sudah memilih) dapat dihapus di menu **Akun**.
+
+Setiap reset dicatat permanen di `admin_audit_log` (`pemilu.reset_uji_coba`) beserta jumlah suara dan
+perolehan tiap kandidat sebelum reset. Database hanya mengizinkan penghapusan surat suara di dalam
+transaksi reset ini; `DELETE` biasa tetap ditolak trigger. Upgrade: jalankan
+`database/migrasi-v10.7-reset-uji-coba.sql` (pembatalan `database/rollback-v10.7-ke-v10.6.sql`).
+
 ### 2.6 Menjalankan dan deploy
 
 ```bash
@@ -229,10 +241,14 @@ yang sama dengan `.env.local` (tanpa variabel `V9_*`).
 | 36 | Login admin dengan password lemah | Diminta membuat password baru (409); sesi baru dibuat setelah password baru tersimpan. |
 | 37 | Buka lalu tutup tanpa suara, tekan Kembali ke Persiapan | Jadwal kosong, status Persiapan; tercatat `pemilu.reset`. |
 | 38 | Kembali ke Persiapan setelah ada suara (lewat web maupun SQL langsung) | Ditolak (409 / trigger database). |
+| 39 | Reset Uji Coba dengan konfirmasi salah / oleh pemilih | Ditolak (400 / 403). |
+| 40 | Reset Uji Coba dengan konfirmasi benar | Semua suara, status sudah memilih, dan penghitung nol; tahap Persiapan; tercatat `pemilu.reset_uji_coba` beserta perolehan sebelum reset. |
+| 41 | Hapus akun yang sudah memilih sebelum / sesudah Reset Uji Coba | Sebelum: ditolak (409, diarahkan ke Reset Uji Coba). Sesudah: berhasil. |
+| 42 | `DELETE FROM ballots` langsung lewat SQL | Tetap ditolak trigger (hanya transaksi Reset Uji Coba yang diizinkan). |
 
 Hasil uji otomatis terhadap aplikasi berjalan (database uji terpisah): K1–K3 57/57, K5/K6 32/32,
 T1 56/56, login kode alumni + T4 41/41, pendaftaran tanpa password (v10.3) 21/21, prioritas tinggi
-T2/T3/T5/T6 (v10.4) 46/46, kembali ke Persiapan (v10.5) 23/23 lulus. Uji login lewat HTTP pada salinan data asli: 715/715
+T2/T3/T5/T6 (v10.4) 46/46, kembali ke Persiapan (v10.5) 23/23, Reset Uji Coba (v10.7) 23/23 lulus. Uji login lewat HTTP pada salinan data asli: 715/715
 akun alumni masuk dengan kode lama, dan 773/773 ketikan 12 digit masuk ke akun yang tanggalnya sesuai
 (0 salah akun). Gladi migrasi v10.2 → ulang → rollback → migrasi pada salinan data asli: data lama
 identik di setiap langkah. Gladi migrasi v10.3 dengan cara yang sama: data lama identik, 4 akun
@@ -280,3 +296,8 @@ pendaftaran mandiri lama mendapat NIM.
 10. Atas keputusan panitia, perolehan suara per kandidat tampil di Siaran Live **selama** pemungutan
     suara. Hal ini transparan, tetapi dapat memengaruhi pemilih yang belum memilih (efek ikut-ikutan /
     *bandwagon*), yang perlu dibahas terkait asas **Bebas**.
+11. **Reset Uji Coba (keputusan panitia).** Admin aplikasi dapat menghapus seluruh suara melalui
+    tombol Reset Uji Coba. Pengamannya: konfirmasi ketik, pencatatan permanen di `admin_audit_log`
+    beserta perolehan sebelum reset, dan penghapusan langsung lewat SQL tetap ditolak. Namun tombol
+    ini juga dapat dipakai saat pemilu sungguhan, sehingga panitia wajib tidak memakainya setelah
+    pemungutan suara resmi dibuka dan memeriksa log audit setelah pemilu.

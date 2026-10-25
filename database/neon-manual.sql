@@ -14,6 +14,7 @@
 --   T1  pengaturan_pemilu: jadwal & status pemilu (persiapan -> pemungutan suara -> ditutup).
 --   T4  Pembatasan percobaan login: users.login_* (kunci per akun) dan login_throttle (per jaringan).
 --   v10.5 Pemilu dapat dikembalikan ke Persiapan selama belum ada suara (uji coba).
+--   v10.7 Reset Uji Coba (menu Pemilu): satu-satunya jalan menghapus surat suara, tercatat di log.
 --   v10.3 Pendaftaran mandiri tanpa password: users.nim (User ID = kode angkatan + tanggal lahir).
 -- ================================================================
 
@@ -170,6 +171,11 @@ CREATE INDEX IF NOT EXISTS idx_security_events_created_at ON security_events(cre
 CREATE OR REPLACE FUNCTION ika_tolak_perubahan() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
+  -- v10.7: Reset Uji Coba boleh menghapus surat suara di dalam transaksinya sendiri.
+  IF TG_TABLE_NAME = 'ballots' AND TG_OP = 'DELETE'
+    AND current_setting('ika.reset_uji_coba', true) = 'ya' THEN
+    RETURN OLD;
+  END IF;
   RAISE EXCEPTION 'Tabel % bersifat append-only; % tidak diizinkan.', TG_TABLE_NAME, TG_OP;
 END;
 $$;

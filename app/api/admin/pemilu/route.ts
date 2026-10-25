@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { closeElectionNow, openElectionNow, resetElectionToPreparation, saveElectionSchedule } from "@/lib/db";
-import { fromWibInput } from "@/lib/election";
+import { closeElectionNow, openElectionNow, resetElectionToPreparation, resetTrialElection, saveElectionSchedule } from "@/lib/db";
+import { TRIAL_RESET_CONFIRMATION, fromWibInput } from "@/lib/election";
 import { getElectionState } from "@/lib/election-guard";
 import { auditActor, getSessionUser, isAdmin } from "@/lib/session";
 import { isSameOrigin, jsonError } from "@/lib/security";
@@ -13,7 +13,8 @@ const schema = z.discriminatedUnion("aksi", [
   }),
   z.object({ aksi: z.literal("buka") }),
   z.object({ aksi: z.literal("tutup") }),
-  z.object({ aksi: z.literal("reset") })
+  z.object({ aksi: z.literal("reset") }),
+  z.object({ aksi: z.literal("reset_uji"), konfirmasi: z.string().max(64) })
 ]);
 
 // Form memakai presisi menit, sedangkan "Buka Sekarang" menyimpan detik.
@@ -44,6 +45,21 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error("Election reset failed:", error);
       return jsonError("Sudah ada suara masuk; pemilu tidak dapat dikembalikan ke tahap Persiapan.", 409);
+    }
+  }
+
+  // v10.7: Reset Uji Coba menghapus seluruh suara percobaan (tercatat permanen di admin_audit_log).
+  if (parsed.data.aksi === "reset_uji") {
+    if (parsed.data.konfirmasi.trim() !== TRIAL_RESET_CONFIRMATION) {
+      return jsonError(`Ketik "${TRIAL_RESET_CONFIRMATION}" untuk mengonfirmasi.`);
+    }
+    if (phase === "persiapan") return jsonError("Pemilu sudah di tahap Persiapan; tidak ada suara uji coba untuk direset.", 409);
+    try {
+      const deleted = await resetTrialElection(actor);
+      return Response.json({ ok: true, deleted });
+    } catch (error) {
+      console.error("Trial reset failed:", error);
+      return jsonError("Reset uji coba gagal. Pastikan migrasi database v10.7 sudah dijalankan.", 500);
     }
   }
 

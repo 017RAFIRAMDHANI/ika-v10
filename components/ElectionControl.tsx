@@ -6,6 +6,7 @@ import LoadingButton from "@/components/LoadingButton";
 import {
   ELECTION_PHASE_LABELS,
   FACE_PURGE_CONFIRMATION,
+  TRIAL_RESET_CONFIRMATION,
   formatWib,
   toWibInput,
   type ElectionPhase,
@@ -84,6 +85,26 @@ export default function ElectionControl({ settings, phase, faceTemplateCount, ba
     void send({ aksi: "reset" }, "Pemilu dikembalikan ke tahap Persiapan.");
   }
 
+  // v10.7: hanya untuk uji coba sebelum hari H; tercatat permanen di admin_audit_log.
+  async function resetTrial() {
+    const typed = window.prompt(`HAPUS SEMUA ${ballotCount} suara uji coba, status "sudah memilih", dan penghitung, lalu kembali ke Persiapan? Gunakan hanya untuk uji coba. Ketik ${TRIAL_RESET_CONFIRMATION} untuk melanjutkan.`);
+    if (typed === null) return;
+    setBusy(true); setMessage(""); setError("");
+    try {
+      const response = await fetch("/api/admin/pemilu", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aksi: "reset_uji", konfirmasi: typed.trim() })
+      });
+      const result = await response.json() as { deleted?: number; message?: string };
+      if (!response.ok) throw new Error(result.message || "Reset uji coba gagal.");
+      setMessage(`Reset uji coba selesai: ${result.deleted ?? 0} suara dihapus. Akun uji kini dapat dihapus di menu Akun.`);
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Reset uji coba gagal.");
+    } finally { setBusy(false); }
+  }
+
   function closeNow() {
     if (!window.confirm("Tutup pemungutan suara SEKARANG? Penutupan bersifat FINAL dan tidak dapat dibuka kembali.")) return;
     if (!window.confirm("Konfirmasi sekali lagi: tutup pemungutan suara secara permanen?")) return;
@@ -149,6 +170,17 @@ export default function ElectionControl({ settings, phase, faceTemplateCount, ba
               : "Kosongkan waktu ditutup bila pemungutan suara akan ditutup manual. Pendaftaran mandiri otomatis tertutup saat pemungutan suara dibuka. Penutupan bersifat final."}
           </p>
         </form>
+      )}
+      {phase !== "persiapan" && ballotCount > 0 && (
+        <div className="detail-section" style={{ marginTop: 16 }}>
+          <strong>Uji coba</strong>
+          <p className="muted" style={{ fontSize: ".78rem", margin: "6px 0 12px" }}>
+            Sudah ada {ballotCount} suara. Bila ini masih percobaan sebelum hari H, Reset Uji Coba menghapus seluruh suara, status sudah memilih, dan penghitung, lalu mengembalikan pemilu ke Persiapan. Akun uji kemudian dapat dihapus di menu Akun. Jumlah suara yang dihapus tercatat permanen di log audit. Jangan dipakai pada pemilu sungguhan.
+          </p>
+          <button type="button" className="app-btn app-btn-danger" disabled={busy} onClick={() => void resetTrial()}>
+            <i className="bx bx-revision" /> Reset Uji Coba
+          </button>
+        </div>
       )}
       {message && <div className="alert alert-success" role="status">{message}</div>}
       {error && <div className="alert alert-danger" role="alert">{error}</div>}
