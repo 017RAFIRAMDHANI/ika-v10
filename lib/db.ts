@@ -212,6 +212,7 @@ export async function getVoters(search = ""): Promise<VoterRecord[]> {
       u.id,
       u.id::int AS "userRecordId",
       u.user_id AS "userId",
+      u.nim,
       u.display_name AS "displayName",
       u.role,
       u.has_voted AS "hasVoted",
@@ -259,6 +260,7 @@ export async function getVoter(id: number) {
       u.id,
       u.id::int AS "userRecordId",
       u.user_id AS "userId",
+      u.nim,
       u.display_name AS "displayName",
       u.role,
       u.has_voted AS "hasVoted",
@@ -303,6 +305,7 @@ export async function getVotersForExport(): Promise<ExportVoterRecord[]> {
       u.id,
       u.id::int AS "userRecordId",
       u.user_id AS "userId",
+      u.nim,
       u.display_name AS "displayName",
       u.role,
       u.has_voted AS "hasVoted",
@@ -488,8 +491,20 @@ export async function importUsers(
   return Number(rows[0]?.count ?? 0);
 }
 
+// Pendaftaran mandiri: NIM sudah dipakai, atau kode login (salah satu penulisannya) sudah dipakai akun lain.
+export async function findRegistrationConflicts(nim: string, loginCodes: string[]) {
+  const sql = getSql();
+  const rows = await sql`
+    SELECT
+      EXISTS (SELECT 1 FROM users WHERE nim = ${nim}) AS "nimTaken",
+      EXISTS (SELECT 1 FROM users WHERE user_id = ANY(${loginCodes}::text[])) AS "codeTaken"
+  `;
+  return rows[0] as { nimTaken: boolean; codeTaken: boolean };
+}
+
 export async function createPublicVoter(data: {
   userId: string;
+  nim: string;
   displayName: string;
   passwordHash: string;
   email: string;
@@ -505,11 +520,11 @@ export async function createPublicVoter(data: {
   const rows = await sql`
     WITH saved_user AS (
       INSERT INTO users (
-        user_id, password_hash, display_name, role, has_voted,
+        user_id, nim, password_hash, display_name, role, has_voted,
         email, whatsapp, study_program, cohort, graduation_year, domicile,
         face_verified_at, registration_source
       ) VALUES (
-        ${data.userId}, ${data.passwordHash}, ${data.displayName}, 'Alumni', FALSE,
+        ${data.userId}, ${data.nim}, ${data.passwordHash}, ${data.displayName}, 'Alumni', FALSE,
         ${data.email}, ${data.whatsapp}, ${data.studyProgram}, ${data.cohort},
         ${data.graduationYear}, ${data.domicile}, NULL, 'PublicRegistration'
       )

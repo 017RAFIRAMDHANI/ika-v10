@@ -60,7 +60,8 @@ export default function VoterEditForm({ voter }: { voter: VoterRecord }) {
         <div className="detail-section-heading"><i className="bx bx-id-card" /><div><h3>Identitas Akun</h3><p>Identitas utama dan hak akses pemilih.</p></div></div>
         <div className="detail-grid">
           <div className="detail-item"><span>ID Database</span><strong>#{voter.id}</strong></div>
-          <div className="detail-item"><span>NPM / NIM / User ID</span><strong>{voter.userId || "-"}</strong></div>
+          <div className="detail-item"><span>User ID (kode login)</span><strong>{voter.userId || "-"}</strong></div>
+          <div className="detail-item"><span>NPM / NIM</span><strong>{voter.nim || "-"}</strong></div>
           <div className="detail-item full"><span>Nama Lengkap</span><strong>{voter.displayName || "-"}</strong></div>
           <div className="detail-item"><span>Role Akun</span><strong>{voter.role}</strong></div>
           <div className="detail-item"><span>Sumber Pendaftaran</span><strong>{voter.registrationSource ? sourceLabels[voter.registrationSource] || voter.registrationSource : "-"}</strong></div>

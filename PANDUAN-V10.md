@@ -14,6 +14,7 @@ sehingga selalu dapat dipakai kembali.
 | **K5** Verifikasi wajah (v10.1) | Server mengirim skor kemiripan saat gagal dan percobaan tidak dibatasi, sehingga template dapat ditebak bertahap. | Skor tidak lagi dikirim (pesan hanya "tidak cocok" + sisa percobaan). Setelah **5 kali gagal**, verifikasi wajah akun itu **dikunci 15 menit** dan tercatat di Peringatan Keamanan. Berhasil atau reset wajah oleh admin membuka kunci. |
 | **T1** Jadwal pemilu (v10.2) | Pemungutan suara terbuka kapan saja; tidak ada cara membuka/menutup pemilu; hasil per kandidat tampil selama voting. | Admin mengatur jadwal di **Dashboard Admin → Status Pemilu** (waktu buka/tutup WIB, tombol *Buka Sekarang* dan *Tutup Sekarang*). Tiga tahap: **Persiapan** (aktivasi wajah, pendaftaran, kelola data; voting tertutup) → **Pemungutan Suara** (voting dibuka; kandidat, impor, kelola akun, dan reset wajah dikunci) → **Ditutup** (final, tidak dapat dibuka lagi). Dua pengaturan admin: pendaftaran mandiri saat voting (bawaan: ditutup) dan hasil per kandidat untuk pemilih saat voting (bawaan: hanya jumlah pemilih). |
 | **Login** kode alumni (v10.2) | User ID = password = tahun angkatan + tanggal lahir + bulan lahir + tahun lahir, tetapi data lama ditulis tanpa angka 0 (mis. `19991261971`) sehingga pemilih yang mengetik 12 digit lengkap ditolak; petunjuk login tidak menjelaskan formatnya. | Login menerima kode **dengan atau tanpa angka 0** (juga spasi/titik/garis miring), mis. `200405031995` = `2004531995`. Pencarian bertingkat: kode persis lebih dulu, lalu penulisan setara; akun dipilih hanya bila password-nya cocok, dan bila kode cocok dengan lebih dari satu akun login ditolak dengan permintaan menulis 12 digit lengkap. Halaman login menampilkan format dan contoh `200419121995`. |
+| **Daftar tanpa password** (v10.3) | Pendaftar mandiri harus membuat password + konfirmasi (menyulitkan alumni lansia) dan login dengan NIM, berbeda dari alumni lain. | Isian password diganti **Tanggal Lahir** (tanggal, bulan, tahun). User ID = password = tahun angkatan + tanggal lahir 12 digit (mis. `200419121995`), sama seperti alumni lain; kodenya tampil saat mengisi dan di layar sukses. NPM/NIM tetap diisi dan disimpan di `users.nim` (pencocokan DPT, satu NIM satu akun, tampil di detail pemilih dan ekspor). Biodata, DPT, NIM, dan kode diperiksa **sebelum** pemindaian wajah; bila angkatan + tanggal lahir yang sama sudah punya akun, pendaftar diarahkan login dengan kode itu. |
 | **T4** Pembatasan percobaan login (v10.2) | Login pemilih, login admin, dan kode pendaftaran dapat dicoba tanpa batas. | **Per akun:** 5 kali salah password = akun dikunci 15 menit (pemilih dan admin). **Per jaringan** (alamat IP disimpan sebagai HMAC, bukan IP mentah): login pemilih 40, login admin 10, kode pendaftaran 10 kali gagal per 15 menit. Penguncian tercatat di Peringatan Keamanan (`login.akun_dikunci`, `*.jaringan_dibatasi`). Admin yang mengubah akun di Kelola Akun sekaligus membuka kunci login akun itu. |
 | **K6** DPT terverifikasi (v10.1) | Pendaftaran mandiri menerima NIM apa pun dan satu wajah dapat mendaftarkan banyak akun. | **Wajah ganda:** wajah baru dibandingkan dengan seluruh wajah terdaftar saat pendaftaran dan aktivasi; bila sama mirip dengan akun lain, proses ditahan dan tercatat. **DPT resmi:** setelah panitia mengunggah daftar alumni (menu Import), pendaftaran mandiri hanya diterima untuk NIM di daftar dengan nama yang sesuai (gelar dan huruf besar/kecil diabaikan). |
 
@@ -102,6 +103,17 @@ Lalu jalankan `database/migrasi-v10.2-t1-t4.sql` di Neon SQL Editor. Migrasi han
 > **Penting:** setelah migrasi, status pemilu = **Persiapan** sehingga pemungutan suara **tertutup**
 > sampai admin mengatur jadwal atau menekan *Buka Sekarang*.
 
+### 2.5a Upgrade database v10.2 ke v10.3 (daftar tanpa password)
+
+```bash
+node --env-file=.env.local scripts/backup-v10.mjs
+```
+
+Lalu jalankan `database/migrasi-v10.3-daftar-tanpa-password.sql` di Neon SQL Editor. Migrasi hanya
+menambah kolom `users.nim` (unik) dan mengisinya untuk akun pendaftaran mandiri lama (NIM = User ID
+mereka); akun lain tidak berubah dan tetap login seperti sebelumnya. Pembatalan:
+`database/rollback-v10.3-ke-v10.2.sql`.
+
 ### 2.5b Mengatur jadwal pemilu
 
 1. Buka **Dashboard Admin** → kartu **Status Pemilu**.
@@ -172,12 +184,17 @@ yang sama dengan `.env.local` (tanpa variabel `V9_*`).
 | 23 | Salah password 5 kali pada satu akun | Akun dikunci 15 menit (429), tercatat di Peringatan Keamanan; password benar pun ditolak selama terkunci. |
 | 24 | Gagal login berulang dari satu jaringan (40 pemilih / 10 admin) | Jaringan dibatasi sampai jendela 15 menit berakhir (429). |
 | 25 | Kode pendaftaran salah 10 kali | Dibatasi (429) sampai jendela 15 menit berakhir. |
+| 26 | Daftar mandiri: isi angkatan + tanggal lahir, tanpa password | Kode 12 digit tampil; setelah wajah dipindai, akun dibuat dengan User ID = password = kode itu dan dapat langsung login (dengan atau tanpa angka 0). |
+| 27 | Daftar dengan tanggal yang tidak ada (31 Februari) / angkatan sebelum tahun lahir | Ditolak di langkah biodata, sebelum pemindaian wajah. |
+| 28 | Daftar dengan angkatan + tanggal lahir yang sudah dimiliki akun lain | Ditolak (409) sebelum pemindaian wajah; diarahkan login dengan kode tersebut atau menghubungi panitia. |
+| 29 | Daftar dengan NIM yang sudah terdaftar | Ditolak (409). |
 
 Hasil uji otomatis terhadap aplikasi berjalan (database uji terpisah): K1–K3 57/57, K5/K6 32/32,
-T1 53/53, login kode alumni + T4 41/41 lulus. Uji login lewat HTTP pada salinan data asli: 715/715
+T1 53/53, login kode alumni + T4 41/41, pendaftaran tanpa password (v10.3) 21/21 lulus. Uji login lewat HTTP pada salinan data asli: 715/715
 akun alumni masuk dengan kode lama, dan 773/773 ketikan 12 digit masuk ke akun yang tanggalnya sesuai
 (0 salah akun). Gladi migrasi v10.2 → ulang → rollback → migrasi pada salinan data asli: data lama
-identik di setiap langkah.
+identik di setiap langkah. Gladi migrasi v10.3 dengan cara yang sama: data lama identik, 4 akun
+pendaftaran mandiri lama mendapat NIM.
 
 ## 5. Batasan yang perlu dicatat di skripsi
 

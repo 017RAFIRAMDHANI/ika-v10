@@ -13,6 +13,7 @@
 --   K6  security_events (wajah dikunci / wajah ganda) dan dpt_resmi (daftar alumni resmi).
 --   T1  pengaturan_pemilu: jadwal & status pemilu (persiapan -> pemungutan suara -> ditutup).
 --   T4  Pembatasan percobaan login: users.login_* (kunci per akun) dan login_throttle (per jaringan).
+--   v10.3 Pendaftaran mandiri tanpa password: users.nim (User ID = kode angkatan + tanggal lahir).
 -- ================================================================
 
 BEGIN;
@@ -37,6 +38,7 @@ CREATE TABLE IF NOT EXISTS candidates (
 CREATE TABLE IF NOT EXISTS users (
   id BIGSERIAL PRIMARY KEY,
   user_id VARCHAR(255) NOT NULL UNIQUE,
+  nim VARCHAR(64),
   password_hash TEXT NOT NULL,
   display_name VARCHAR(255) NOT NULL,
   role VARCHAR(32) NOT NULL DEFAULT 'Alumni'
@@ -151,6 +153,7 @@ CREATE TABLE IF NOT EXISTS login_throttle (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_candidates_name ON candidates(name);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_nim ON users(nim) WHERE nim IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email_ci
   ON users (LOWER(email)) WHERE email IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_face_templates_user_id

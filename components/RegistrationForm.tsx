@@ -6,11 +6,12 @@ import FaceCapture, { preloadFaceModels } from "@/components/FaceCapture";
 import LoadingButton from "@/components/LoadingButton";
 import { detectFaceDeviceClass } from "@/lib/face-device";
 import { FACE_ARCFACE_MODEL_VERSION, type FaceCapturePayload, type FaceDeviceClass } from "@/lib/face-types";
+import { buildLoginCode } from "@/lib/login-code";
 
 type RegistrationStep = 1 | 2 | 3;
 
 type RegistrationData = {
-  userId: string;
+  nim: string;
   displayName: string;
   email: string;
   whatsapp: string;
@@ -18,12 +19,13 @@ type RegistrationData = {
   cohort: string;
   graduationYear: string;
   domicile: string;
-  password: string;
-  confirmPassword: string;
+  birthDay: string;
+  birthMonth: string;
+  birthYear: string;
 };
 
 const initialData: RegistrationData = {
-  userId: "",
+  nim: "",
   displayName: "",
   email: "",
   whatsapp: "",
@@ -31,11 +33,19 @@ const initialData: RegistrationData = {
   cohort: "",
   graduationYear: "",
   domicile: "",
-  password: "",
-  confirmPassword: ""
+  birthDay: "",
+  birthMonth: "",
+  birthYear: ""
 };
 
-const stepLabels = ["Kode Primary", "Biodata & Akun", "Verifikasi Wajah"];
+const stepLabels = ["Kode Primary", "Biodata", "Verifikasi Wajah"];
+const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+// Pratinjau kode login (angkatan + tanggal + bulan + tahun lahir) setelah keempat isian lengkap.
+function previewLoginCode(data: RegistrationData) {
+  if (!/^\d{4}$/.test(data.cohort) || !/^\d{4}$/.test(data.birthYear) || !data.birthDay || !data.birthMonth) return "";
+  return buildLoginCode(data.cohort, Number(data.birthDay), Number(data.birthMonth), data.birthYear);
+}
 
 export default function RegistrationForm() {
   const [step, setStep] = useState<RegistrationStep>(1);
@@ -48,8 +58,9 @@ export default function RegistrationForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [loginCode, setLoginCode] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
-  const SESSION_KEY = "dpt_registration_draft";
+  const SESSION_KEY = "dpt_registration_draft_v2";
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDeviceClass(detectFaceDeviceClass()), 0);
@@ -73,7 +84,7 @@ export default function RegistrationForm() {
           if (parsed.step) setStep(parsed.step);
           if (parsed.primaryCode) setPrimaryCode(parsed.primaryCode);
           if (parsed.accessToken) setAccessToken(parsed.accessToken);
-          if (parsed.data) setData(parsed.data);
+          if (parsed.data) setData({ ...initialData, ...parsed.data });
           if (parsed.canonicalFace) setCanonicalFace(parsed.canonicalFace);
           if (parsed.consent !== undefined) setConsent(parsed.consent);
         }
@@ -139,12 +150,36 @@ export default function RegistrationForm() {
     }
   }
 
-  function continueFromBiodata() {
-    if (data.password !== data.confirmPassword) {
-      setError("Konfirmasi password tidak sama.");
-      return;
+  // Biodata, DPT, NIM, dan kode login diperiksa server sebelum pemindaian wajah.
+  async function continueFromBiodata() {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/registration/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+        body: JSON.stringify({ accessToken, ...data })
+      });
+      const result = await response.json().catch(() => ({
+        ok: false,
+        message: `Server mengembalikan respons yang tidak valid (${response.status}).`
+      })) as { ok: boolean; loginCode?: string; message?: string };
+      if (!response.ok || !result.loginCode) {
+        if (response.status === 403) {
+          setAccessToken("");
+          setStep(1);
+        }
+        throw new Error(result.message || "Data pendaftaran tidak dapat diperiksa.");
+      }
+      setLoginCode(result.loginCode);
+      moveTo(3);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Data pendaftaran tidak dapat diperiksa.");
+    } finally {
+      setBusy(false);
     }
-    moveTo(3);
   }
 
   async function submitRegistration(website: FormDataEntryValue | null) {
@@ -177,7 +212,7 @@ export default function RegistrationForm() {
       const result = await response.json().catch(() => ({
         ok: false,
         message: `Server mengembalikan respons yang tidak valid (${response.status}).`
-      })) as { ok: boolean; message?: string };
+      })) as { ok: boolean; loginCode?: string; message?: string };
       if (!response.ok) {
         if (response.status === 403) {
           setAccessToken("");
@@ -194,6 +229,7 @@ export default function RegistrationForm() {
       } catch {
         // ignore
       }
+      setLoginCode(result.loginCode || previewLoginCode(data));
       setSuccess(result.message || "Pendaftaran berhasil.");
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (caught) {
@@ -210,7 +246,7 @@ export default function RegistrationForm() {
       return;
     }
     if (step === 2) {
-      continueFromBiodata();
+      await continueFromBiodata();
       return;
     }
     const form = new FormData(event.currentTarget);
@@ -223,7 +259,12 @@ export default function RegistrationForm() {
         <span className="success-check"><i className="bx bx-check" /></span>
         <span className="eyebrow">Pendaftaran DPT Selesai</span>
         <h2>Hak pilih Anda sudah dibuat</h2>
-        <p>{success}</p>
+        <p>{success} Untuk masuk, ketik kode berikut di kolom <strong>User ID</strong> dan <strong>Password</strong>.</p>
+        <div className="login-code-box">
+          <small>User ID dan password Anda</small>
+          <strong>{loginCode}</strong>
+          <small>Tahun angkatan + tanggal lahir + bulan lahir + tahun lahir. Catat atau foto layar ini.</small>
+        </div>
         <div className="auth-hint">
           <i className="bx bx-face" />
           <span>Saat pertama membuka bilik suara, lakukan satu kali pencocokan wajah menggunakan data yang baru didaftarkan.</span>
@@ -274,19 +315,27 @@ export default function RegistrationForm() {
 
       {step === 2 && (
         <section className="registration-section">
-          <div className="registration-section-title"><span>2</span><div><h2>Biodata Alumni dan Akun</h2><p>Gunakan identitas akademik yang benar dan buat password untuk masuk ke sistem.</p></div></div>
+          <div className="registration-section-title"><span>2</span><div><h2>Biodata Alumni</h2><p>Gunakan identitas akademik yang benar. Tidak perlu membuat password: untuk masuk, Anda memakai tahun angkatan dan tanggal lahir.</p></div></div>
           <div className="form-grid">
             <div className="field half"><label htmlFor="displayName">Nama Lengkap</label><input className="app-input" id="displayName" required maxLength={255} autoComplete="name" placeholder="Nama lengkap beserta gelar (opsional)" value={data.displayName} onChange={(event) => update("displayName", event.target.value)} /></div>
-            <div className="field half"><label htmlFor="userId">NPM / NIM</label><input className="app-input" id="userId" required minLength={5} maxLength={64} autoComplete="username" placeholder="Digunakan sebagai User ID" value={data.userId} onChange={(event) => update("userId", event.target.value)} /></div>
+            <div className="field half"><label htmlFor="nim">NPM / NIM</label><input className="app-input" id="nim" required minLength={5} maxLength={64} placeholder="Untuk dicocokkan dengan DPT" value={data.nim} onChange={(event) => update("nim", event.target.value)} /></div>
             <div className="field half"><label htmlFor="studyProgram">Program Studi</label><select className="app-select" id="studyProgram" required value={data.studyProgram} onChange={(event) => update("studyProgram", event.target.value)}><option value="" disabled>Pilih program studi</option><option>Administrasi Negara</option><option>Administrasi Publik</option></select></div>
             <div className="field quarter"><label htmlFor="cohort">Angkatan</label><input className="app-input" id="cohort" required inputMode="numeric" pattern="[0-9]{4}" maxLength={4} placeholder="Contoh: 2012" value={data.cohort} onChange={(event) => update("cohort", event.target.value)} /></div>
             <div className="field quarter"><label htmlFor="graduationYear">Tahun Lulus</label><input className="app-input" id="graduationYear" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} placeholder="Opsional" value={data.graduationYear} onChange={(event) => update("graduationYear", event.target.value)} /></div>
             <div className="field half"><label htmlFor="email">Email Aktif</label><input className="app-input" type="email" id="email" required maxLength={320} autoComplete="email" placeholder="nama@email.com" value={data.email} onChange={(event) => update("email", event.target.value)} /></div>
             <div className="field half"><label htmlFor="whatsapp">Nomor WhatsApp</label><input className="app-input" type="tel" id="whatsapp" required minLength={8} maxLength={32} autoComplete="tel" placeholder="Contoh: +628123456789" value={data.whatsapp} onChange={(event) => update("whatsapp", event.target.value)} /></div>
             <div className="field"><label htmlFor="domicile">Domisili</label><input className="app-input" id="domicile" maxLength={160} autoComplete="address-level2" placeholder="Kota/Kabupaten (opsional)" value={data.domicile} onChange={(event) => update("domicile", event.target.value)} /></div>
-            <div className="field half"><label htmlFor="password">Password</label><input className="app-input" type="password" id="password" required minLength={8} maxLength={255} autoComplete="new-password" placeholder="Minimal 8 karakter" value={data.password} onChange={(event) => update("password", event.target.value)} /></div>
-            <div className="field half"><label htmlFor="confirmPassword">Konfirmasi Password</label><input className="app-input" type="password" id="confirmPassword" required minLength={8} maxLength={255} autoComplete="new-password" placeholder="Ulangi password" value={data.confirmPassword} onChange={(event) => update("confirmPassword", event.target.value)} /></div>
+            <div className="field third"><label htmlFor="birthDay">Tanggal Lahir</label><select className="app-select" id="birthDay" required value={data.birthDay} onChange={(event) => update("birthDay", event.target.value)}><option value="" disabled>Tanggal</option>{Array.from({ length: 31 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</select></div>
+            <div className="field third"><label htmlFor="birthMonth">Bulan Lahir</label><select className="app-select" id="birthMonth" required value={data.birthMonth} onChange={(event) => update("birthMonth", event.target.value)}><option value="" disabled>Bulan</option>{MONTHS.map((month, index) => <option key={month} value={index + 1}>{month}</option>)}</select></div>
+            <div className="field third"><label htmlFor="birthYear">Tahun Lahir</label><input className="app-input" id="birthYear" required inputMode="numeric" pattern="[0-9]{4}" maxLength={4} autoComplete="bday-year" placeholder="Contoh: 1965" value={data.birthYear} onChange={(event) => update("birthYear", event.target.value)} /></div>
           </div>
+          {previewLoginCode(data) && (
+            <div className="login-code-box">
+              <small>User ID dan password Anda nanti</small>
+              <strong>{previewLoginCode(data)}</strong>
+              <small>Tahun angkatan + tanggal lahir + bulan lahir + tahun lahir</small>
+            </div>
+          )}
         </section>
       )}
 

@@ -29,6 +29,7 @@ export type VoterRecord = {
   id: number;
   userRecordId: number | null;
   userId: string | null;
+  nim: string | null;
   displayName: string | null;
   role: UserRole;
   hasVoted: boolean | null;

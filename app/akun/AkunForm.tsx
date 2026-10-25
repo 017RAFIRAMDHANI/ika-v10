@@ -62,7 +62,7 @@ export default function AkunForm({ user }: { user: SessionUser }) {
       <div className="manager-form-body">
         <form className="form-grid" onSubmit={submit}>
           <div className="field half">
-            <label>User ID (NIM)</label>
+            <label>User ID</label>
             <input 
               className="app-input" 
               value={user.userId} 

@@ -2,11 +2,13 @@
 
 | File | Kegunaan |
 | --- | --- |
-| `neon-manual.sql` | Skema v10.2. Jalankan sekali pada database Neon baru yang kosong. |
+| `neon-manual.sql` | Skema v10.3. Jalankan sekali pada database Neon baru yang kosong. |
 | `migrasi-v10.1-k5-k6.sql` | Upgrade database v10.0 yang sudah berisi data ke v10.1 (K5 & K6). |
 | `rollback-v10.1-ke-v10.0.sql` | Membatalkan migrasi v10.1. |
 | `migrasi-v10.2-t1-t4.sql` | Upgrade v10.1 ke v10.2 (T1: jadwal pemilu, T4: pembatasan percobaan login). |
 | `rollback-v10.2-ke-v10.1.sql` | Membatalkan migrasi v10.2. |
+| `migrasi-v10.3-daftar-tanpa-password.sql` | Upgrade v10.2 ke v10.3 (kolom `users.nim` untuk pendaftaran mandiri tanpa password). |
+| `rollback-v10.3-ke-v10.2.sql` | Membatalkan migrasi v10.3. |
 | `data-awal.sql` | Tiga kandidat + akun admin. **Hanya** untuk instalasi baru tanpa migrasi dari v9. Ganti `admin_password` terlebih dahulu. |
 | `reset-wajah-v4.sql` | Reset data wajah satu pemilih (manual). |
 | `reset-wajah-model-lama.sql` | Opsional: cabut seluruh template wajah model lama (faceres). |
@@ -30,6 +32,8 @@
   waktu tutup selama pemungutan suara; baris tidak dapat dihapus.
 - `users.login_failed_attempts` / `users.login_locked_until` **(v10.2)**: penghitung salah password
   dan kunci login sementara per akun.
+- `users.nim` **(v10.3)**: NPM/NIM pendaftar mandiri (unik). User ID pendaftar baru adalah kode
+  angkatan + tanggal lahir, sehingga NIM disimpan terpisah untuk pencocokan DPT.
 - `login_throttle` **(v10.2)**: jumlah gagal login/kode pendaftaran per jaringan dalam jendela 15
   menit. Kunci = HMAC alamat IP; IP mentah tidak disimpan. Data sementara, tidak ikut backup.
 

@@ -2807,6 +2807,36 @@ img {
   text-align: left;
 }
 
+/* Kode login (User ID = password) yang ditampilkan saat dan setelah pendaftaran. */
+.login-code-box {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px dashed #93c5fd;
+  border-radius: 15px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  text-align: center;
+}
+
+.login-code-box small {
+  font-size: .72rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.login-code-box strong {
+  color: var(--app-900);
+  font-size: clamp(1.5rem, 6vw, 2.1rem);
+  letter-spacing: .08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.registration-success .login-code-box {
+  margin-bottom: 18px;
+}
+
 @media (max-width: 1080px) {
   .admin-desktop-nav {
     gap: 12px;

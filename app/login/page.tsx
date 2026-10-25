@@ -35,7 +35,7 @@ export default async function LoginPage() {
             <span>
               <strong>User ID dan password:</strong> tahun angkatan + tanggal lahir + bulan lahir + tahun lahir.<br />
               Contoh: angkatan 2004, lahir 19 Desember 1995 → <strong>200419121995</strong>. Angka 0 pada tanggal/bulan boleh ditulis atau tidak (05 atau 5).<br />
-              Mendaftar mandiri: User ID = NPM/NIM, password sesuai saat mendaftar.
+              Berlaku juga untuk yang mendaftar mandiri.
             </span>
           </div>
           <LoginForm />

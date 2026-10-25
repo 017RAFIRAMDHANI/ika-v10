@@ -106,3 +106,22 @@ export async function resolveLoginAccount<A extends LoginCandidate>(
   }
   return { status: "failed", accounts: [] };
 }
+
+// Kode login pendaftar mandiri: selalu 12 digit (tanggal & bulan dengan angka 0) agar tidak ambigu.
+export function buildLoginCode(cohort: string, day: number, month: number, birthYear: string) {
+  return `${cohort}${String(day).padStart(2, "0")}${String(month).padStart(2, "0")}${birthYear}`;
+}
+
+// Semua penulisan kode untuk tanggal yang sama (dengan/tanpa angka 0), untuk mencegah akun ganda.
+export function sameDateCodes(cohort: string, day: number, month: number, birthYear: string) {
+  const dayText = String(day);
+  const monthText = String(month);
+  const dayPadded = dayText.padStart(2, "0");
+  const monthPadded = monthText.padStart(2, "0");
+  return Array.from(new Set([
+    `${cohort}${dayText}${monthText}${birthYear}`,
+    `${cohort}${dayPadded}${monthPadded}${birthYear}`,
+    `${cohort}${dayPadded}${monthText}${birthYear}`,
+    `${cohort}${dayText}${monthPadded}${birthYear}`
+  ]));
+}

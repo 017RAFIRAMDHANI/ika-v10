@@ -14,6 +14,7 @@ export async function GET() {
   const sheet = workbook.addWorksheet("Data Pemilih");
   sheet.columns = [
     { header: "User ID", key: "userId", width: 20 },
+    { header: "NPM / NIM", key: "nim", width: 18 },
     { header: "Nama Lengkap", key: "displayName", width: 32 },
     { header: "Program Studi", key: "studyProgram", width: 24 },
     { header: "Angkatan", key: "cohort", width: 12 },
@@ -34,6 +35,7 @@ export async function GET() {
   sheet.addRows(
     voters.map((voter) => ({
       userId: voter.userId ?? "-",
+      nim: voter.nim ?? "-",
       displayName: voter.displayName ?? "-",
       studyProgram: voter.studyProgram ?? "-",
       cohort: voter.cohort ?? "-",
